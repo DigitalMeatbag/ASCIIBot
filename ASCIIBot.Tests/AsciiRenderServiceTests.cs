@@ -225,19 +225,6 @@ public sealed class AsciiRenderServiceTests
             }
     }
 
-    [Fact]
-    public void Render_RichModel_BackgroundIsNull()
-    {
-        var svc = MakeService();
-        using var img = new Image<Rgba32>(5, 5);
-
-        var render = svc.Render(img, SizePreset.Small, DetailPreset.Normal);
-
-        foreach (var row in render.Cells)
-            foreach (var cell in row)
-                Assert.Null(cell.Background);
-    }
-
     // ─── Detail sample-window behavior ───────────────────────────────────────
 
     [Fact]

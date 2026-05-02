@@ -61,9 +61,9 @@ public sealed class ConcurrencyGate
 
 public enum ConcurrencyRejection { None, UserBusy, GlobalBusy }
 
-public readonly struct ConcurrencyHandle : IDisposable
+public struct ConcurrencyHandle : IDisposable
 {
-    private readonly ConcurrencyGate? _gate;
+    private ConcurrencyGate? _gate;
     private readonly ulong _userId;
 
     public ConcurrencyHandle(ConcurrencyGate gate, ulong userId)
@@ -72,5 +72,10 @@ public readonly struct ConcurrencyHandle : IDisposable
         _userId = userId;
     }
 
-    public void Dispose() => _gate?.Release(_userId);
+    public void Dispose()
+    {
+        if (_gate is null) return;
+        _gate.Release(_userId);
+        _gate = null;
+    }
 }
