@@ -140,7 +140,7 @@ public sealed class AsciiRenderServiceTests
     // ─── Character ramp / luminance mapping ─────────────────────────────────
 
     [Fact]
-    public void Render_WhitePixel_MapsToSpaceCharacter()
+    public void Render_WhitePixel_MapsToAtCharacter()
     {
         var svc = MakeService();
         using var img = new Image<Rgba32>(1, 1);
@@ -148,11 +148,11 @@ public sealed class AsciiRenderServiceTests
 
         var result = svc.Render(img, SizePreset.Small, DetailPreset.Normal);
 
-        Assert.Equal(' ', result.Cells[0][0].Character);
+        Assert.Equal('@', result.Cells[0][0].Character);
     }
 
     [Fact]
-    public void Render_BlackPixel_MapsToAtCharacter()
+    public void Render_BlackPixel_MapsToSpaceCharacter()
     {
         var svc = MakeService();
         using var img = new Image<Rgba32>(1, 1);
@@ -160,7 +160,7 @@ public sealed class AsciiRenderServiceTests
 
         var result = svc.Render(img, SizePreset.Small, DetailPreset.Normal);
 
-        Assert.Equal('@', result.Cells[0][0].Character);
+        Assert.Equal(' ', result.Cells[0][0].Character);
     }
 
     [Fact]
@@ -172,8 +172,8 @@ public sealed class AsciiRenderServiceTests
 
         var result = svc.Render(img, SizePreset.Small, DetailPreset.Normal);
 
-        // Composited on dark background #0B0D10 → very dark → '@' (densest ramp char)
-        Assert.Equal('@', result.Cells[0][0].Character);
+        // Composited on dark background #0B0D10 -> very dark -> space (least visible ramp char)
+        Assert.Equal(' ', result.Cells[0][0].Character);
         // Foreground should be the dark background color
         Assert.Equal(0x0B, result.Cells[0][0].Foreground.R);
         Assert.Equal(0x0D, result.Cells[0][0].Foreground.G);
@@ -312,7 +312,7 @@ public sealed class AsciiRenderServiceTests
 
         var render = svc.Render(img, new SizePreset(2, 1), DetailPreset.Normal);
 
-        Assert.Equal('@', render.Cells[0][0].Character);
-        Assert.Equal(' ', render.Cells[0][1].Character);
+        Assert.Equal(' ', render.Cells[0][0].Character);
+        Assert.Equal('@', render.Cells[0][1].Character);
     }
 }

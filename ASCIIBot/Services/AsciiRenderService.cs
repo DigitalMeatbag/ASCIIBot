@@ -7,7 +7,7 @@ namespace ASCIIBot.Services;
 
 public sealed class AsciiRenderService
 {
-    private const string Ramp = "@%#*+=-:. ";
+    private const string Ramp = " .:-=+*#%@";
 
     // Default dark background for transparent pixel compositing (#0B0D10)
     private const byte BgR = 0x0B;
