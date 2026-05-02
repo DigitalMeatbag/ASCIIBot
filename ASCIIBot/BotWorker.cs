@@ -72,6 +72,7 @@ internal sealed class BotWorker : BackgroundService
             valid = false;
         }
 
+        // Common options
         valid &= ValidateIntOption("MaxGlobalJobs",        _options.MaxGlobalJobs);
         valid &= ValidateIntOption("MaxJobsPerUser",       _options.MaxJobsPerUser);
         valid &= ValidateIntOption("AttachmentByteLimit",  _options.AttachmentByteLimit);
@@ -80,6 +81,27 @@ internal sealed class BotWorker : BackgroundService
         valid &= ValidateLongOption("TotalUploadByteLimit", _options.TotalUploadByteLimit);
         valid &= ValidateIntOption("RenderPngMaxWidth",    _options.RenderPngMaxWidth);
         valid &= ValidateIntOption("RenderPngMaxHeight",   _options.RenderPngMaxHeight);
+        valid &= ValidateIntOption("SourceImageByteLimit", _options.SourceImageByteLimit);
+        valid &= ValidateIntOption("MaxDecodedImageWidth", _options.MaxDecodedImageWidth);
+        valid &= ValidateIntOption("MaxDecodedImageHeight", _options.MaxDecodedImageHeight);
+
+        // Animation options
+        valid &= ValidateIntOption("AnimationMaxDurationMs",          _options.AnimationMaxDurationMs);
+        valid &= ValidateIntOption("AnimationMaxOutputFrames",        _options.AnimationMaxOutputFrames);
+        valid &= ValidateIntOption("AnimationTargetSampleIntervalMs", _options.AnimationTargetSampleIntervalMs);
+        valid &= ValidateIntOption("AnimationMinFrameDelayMs",        _options.AnimationMinFrameDelayMs);
+        valid &= ValidateIntOption("AnimationWebPByteLimit",          _options.AnimationWebPByteLimit);
+        valid &= ValidateIntOption("AnimationMaxOutputCells",         _options.AnimationMaxOutputCells);
+        valid &= ValidateIntOption("AnimationMaxSourceFrames",        _options.AnimationMaxSourceFrames);
+
+        // Per spec §3.3: warn but don't reject if MaxOutputFrames > MaxSourceFrames
+        if (_options.AnimationMaxOutputFrames > _options.AnimationMaxSourceFrames)
+        {
+            _logger.LogWarning(
+                "ASCIIBot_AnimationMaxOutputFrames ({OutputFrames}) exceeds ASCIIBot_AnimationMaxSourceFrames ({SourceFrames}). " +
+                "Duplicate sampled frames are allowed.",
+                _options.AnimationMaxOutputFrames, _options.AnimationMaxSourceFrames);
+        }
 
         return valid;
     }

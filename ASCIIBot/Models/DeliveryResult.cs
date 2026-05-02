@@ -25,6 +25,13 @@ public abstract class DeliveryResult
         public RenderFile?          OriginalImage  { get; init; }
     }
 
+    public sealed class Animated : DeliveryResult
+    {
+        public required string     CompletionText { get; init; }
+        public required RenderFile WebPRender     { get; init; }
+        public RenderFile?         OriginalImage  { get; init; }
+    }
+
     public sealed class Rejected : DeliveryResult
     {
         public required string Message { get; init; }

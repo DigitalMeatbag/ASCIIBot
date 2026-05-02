@@ -15,6 +15,7 @@ public sealed class OutputDeliveryService
 
     private const string CompletionTextInline    = "Rendering complete.";
     private const string CompletionTextNonInline = "Rendering complete. Output has been attached.";
+    private const string CompletionTextAnimated  = "Rendering complete. Animated output has been attached.";
     internal const string OmissionNote           = "Original image display was omitted due to delivery limits.";
 
     public OutputDeliveryService(
@@ -199,6 +200,57 @@ public sealed class OutputDeliveryService
             CompletionText = CompletionTextNonInline,
             PngRender      = pngAttachment,
             TxtRender      = txtAttachment,
+            OriginalImage  = null,
+        };
+    }
+
+    public DeliveryResult DecideAnimated(byte[] webpBytes, bool showOriginal, RenderFile? originalImage)
+    {
+        // Animated WebP byte limit check
+        if (webpBytes.Length > _options.AnimationWebPByteLimit)
+        {
+            _logger.LogDebug("Animated WebP ({Bytes} bytes) exceeds byte limit, rejecting", webpBytes.Length);
+            return Rejected("The rendered animation exceeds delivery limits. Processing has been rejected.");
+        }
+
+        // WebP alone must fit in total upload budget
+        if ((long)webpBytes.Length > _options.TotalUploadByteLimit)
+        {
+            _logger.LogDebug("Animated WebP ({Bytes} bytes) exceeds total upload limit, rejecting", webpBytes.Length);
+            return Rejected("The rendered animation exceeds delivery limits. Processing has been rejected.");
+        }
+
+        var webpFile = new RenderFile { Content = webpBytes, Filename = "asciibot-render.webp" };
+
+        if (!showOriginal || originalImage is null)
+        {
+            return new DeliveryResult.Animated
+            {
+                CompletionText = CompletionTextAnimated,
+                WebPRender     = webpFile,
+                OriginalImage  = null,
+            };
+        }
+
+        // Try to include original image
+        long withOriginal = (long)webpBytes.Length + originalImage.Content.LongLength;
+        if (withOriginal <= _options.TotalUploadByteLimit)
+        {
+            _logger.LogDebug("Delivering animated with original ({TotalBytes} bytes)", withOriginal);
+            return new DeliveryResult.Animated
+            {
+                CompletionText = CompletionTextAnimated,
+                WebPRender     = webpFile,
+                OriginalImage  = originalImage,
+            };
+        }
+
+        // Original doesn't fit — omit with note
+        _logger.LogDebug("Animated original image omitted due to delivery limits");
+        return new DeliveryResult.Animated
+        {
+            CompletionText = CompletionTextAnimated + "\n" + OmissionNote,
+            WebPRender     = webpFile,
             OriginalImage  = null,
         };
     }

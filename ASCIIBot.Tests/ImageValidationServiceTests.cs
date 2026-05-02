@@ -1,6 +1,8 @@
+using ASCIIBot;
 using ASCIIBot.Models;
 using ASCIIBot.Services;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.Formats.Gif;
 using SixLabors.ImageSharp.Formats.Png;
@@ -10,8 +12,14 @@ namespace ASCIIBot.Tests;
 
 public sealed class ImageValidationServiceTests
 {
-    private static ImageValidationService MakeService() =>
-        new(NullLogger<ImageValidationService>.Instance);
+    private static ImageValidationService MakeService(
+        int maxWidth  = 4096,
+        int maxHeight = 4096) =>
+        new(Options.Create(new BotOptions
+        {
+            MaxDecodedImageWidth  = maxWidth,
+            MaxDecodedImageHeight = maxHeight,
+        }), NullLogger<ImageValidationService>.Instance);
 
     // --- Valid static images ---
 
@@ -57,13 +65,13 @@ public sealed class ImageValidationServiceTests
     }
 
     [Fact]
-    public async Task ValidateAsync_AnimatedGif_ReturnsError()
+    public async Task ValidateAsync_AnimatedGif_ReturnsAnimatedOk()
     {
         var svc    = MakeService();
         using var stream = CreateAnimatedGif(2, 2, frameCount: 2);
         var result = await svc.ValidateAsync(stream);
-        var error  = Assert.IsType<ValidationResult.Error>(result);
-        Assert.Contains("Animated", error.Message, StringComparison.OrdinalIgnoreCase);
+        var animOk = Assert.IsType<ValidationResult.AnimatedOk>(result);
+        animOk.Image.Dispose();
     }
 
     [Fact]

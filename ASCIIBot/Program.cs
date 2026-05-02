@@ -38,6 +38,10 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddSingleton<AnsiColorService>();
         services.AddSingleton<PlainTextExportService>();
         services.AddSingleton<PngRenderService>();
+        services.AddSingleton<AnimationInspectionService>();
+        services.AddSingleton<AnimationSamplingService>();
+        services.AddSingleton<AnimatedAsciiRenderService>();
+        services.AddSingleton<AnimatedWebPExportService>();
         services.AddSingleton<OutputDeliveryService>();
 
         services.AddHostedService<BotWorker>();

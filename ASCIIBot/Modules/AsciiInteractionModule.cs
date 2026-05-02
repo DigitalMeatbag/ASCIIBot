@@ -3,32 +3,48 @@ using ASCIIBot.Services;
 using Discord;
 using Discord.Interactions;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace ASCIIBot.Modules;
 
 public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly ConcurrencyGate        _concurrency;
-    private readonly ImageDownloadService   _downloader;
-    private readonly ImageValidationService _validator;
-    private readonly AsciiRenderService     _renderer;
-    private readonly OutputDeliveryService  _delivery;
+    private readonly ConcurrencyGate             _concurrency;
+    private readonly ImageDownloadService        _downloader;
+    private readonly ImageValidationService      _validator;
+    private readonly AsciiRenderService          _renderer;
+    private readonly AnimationInspectionService  _animInspection;
+    private readonly AnimationSamplingService    _animSampling;
+    private readonly AnimatedAsciiRenderService  _animRenderer;
+    private readonly AnimatedWebPExportService   _animExporter;
+    private readonly OutputDeliveryService       _delivery;
+    private readonly BotOptions                  _options;
     private readonly ILogger<AsciiInteractionModule> _logger;
 
     public AsciiInteractionModule(
-        ConcurrencyGate         concurrency,
-        ImageDownloadService    downloader,
-        ImageValidationService  validator,
-        AsciiRenderService      renderer,
-        OutputDeliveryService   delivery,
+        ConcurrencyGate              concurrency,
+        ImageDownloadService         downloader,
+        ImageValidationService       validator,
+        AsciiRenderService           renderer,
+        AnimationInspectionService   animInspection,
+        AnimationSamplingService     animSampling,
+        AnimatedAsciiRenderService   animRenderer,
+        AnimatedWebPExportService    animExporter,
+        OutputDeliveryService        delivery,
+        IOptions<BotOptions>         options,
         ILogger<AsciiInteractionModule> logger)
     {
-        _concurrency = concurrency;
-        _downloader  = downloader;
-        _validator   = validator;
-        _renderer    = renderer;
-        _delivery    = delivery;
-        _logger      = logger;
+        _concurrency    = concurrency;
+        _downloader     = downloader;
+        _validator      = validator;
+        _renderer       = renderer;
+        _animInspection = animInspection;
+        _animSampling   = animSampling;
+        _animRenderer   = animRenderer;
+        _animExporter   = animExporter;
+        _delivery       = delivery;
+        _options        = options.Value;
+        _logger         = logger;
     }
 
     [SlashCommand("ascii", "Convert an image to ASCII art")]
@@ -135,6 +151,19 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
                 return;
             }
 
+            // Route to animated pipeline
+            if (validationResult is ValidationResult.AnimatedOk animOk)
+            {
+                _logger.LogInformation("Routing animated {Format} for user {UserId}",
+                    animOk.Format.Name, userId);
+                using (animOk.Image)
+                {
+                    await ProcessAnimatedAsync(animOk, size, color, detail, showOriginal, userId);
+                }
+                return;
+            }
+
+            // Static pipeline
             var ok = (ValidationResult.Ok)validationResult;
             using var decodedImage = ok.Image;
 
@@ -187,6 +216,190 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
                     await FollowupAsync(rejected.Message);
                     break;
             }
+        }
+    }
+
+    private async Task ProcessAnimatedAsync(
+        ValidationResult.AnimatedOk animOk,
+        string                      size,
+        string                      color,
+        string                      detail,
+        bool                        showOriginal,
+        ulong                       userId)
+    {
+        var sizePreset   = SizePreset.FromString(size);
+        var detailPreset = DetailPreset.FromString(detail);
+        var colorEnabled = color != "off";
+
+        // Inspect animation metadata and enforce limits
+        var inspectionResult = _animInspection.Inspect(animOk.Image, animOk.Format);
+        if (inspectionResult is AnimationInspectionResult.Rejected inspRej)
+        {
+            _logger.LogInformation("Animation inspection rejected for user {UserId}: {Message}",
+                userId, inspRej.Message);
+            await FollowupAsync(inspRej.Message);
+            return;
+        }
+        var inspection = (AnimationInspectionResult.Ok)inspectionResult;
+
+        // Compute output grid
+        var (cols, rows) = AsciiRenderService.ComputeDimensions(
+            inspection.CanvasWidth, inspection.CanvasHeight, sizePreset);
+
+        // Determine sampled frames
+        var sampling     = _animSampling.Sample(inspection.SourceDurationMs, inspection.FrameStartTimesMs);
+        int sampledCount = sampling.SelectedSourceFrameIndices.Length;
+
+        // Cost fuse
+        long totalCells = (long)cols * rows * sampledCount;
+        _logger.LogInformation(
+            "Animation for user {UserId}: {W}x{H} grid, {Frames} frames, {Cells} cells",
+            userId, cols, rows, sampledCount, totalCells);
+
+        if (totalCells > _options.AnimationMaxOutputCells)
+        {
+            _logger.LogInformation("Animation cost fuse exceeded for user {UserId}: {Cells}", userId, totalCells);
+            await FollowupAsync("The submitted animation exceeds processing limits. Processing has been rejected.");
+            return;
+        }
+
+        // Render frames
+        AnimatedAsciiRender animRender;
+        try
+        {
+            animRender = _animRenderer.Render(
+                animOk.Image, cols, rows, sampling, detailPreset, colorEnabled);
+            _logger.LogInformation(
+                "Animated render completed for user {UserId}: {Frames} frames {Cols}x{Rows}",
+                userId, animRender.Frames.Length, cols, rows);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Animated render failed for user {UserId}", userId);
+            await FollowupAsync("The submitted animation could not be rendered. Processing has failed.");
+            return;
+        }
+
+        // Export to animated WebP
+        byte[]? webpBytes;
+        try
+        {
+            webpBytes = _animExporter.Export(animRender, colorEnabled);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Animated WebP export failed for user {UserId}", userId);
+            await FollowupAsync("The submitted animation could not be rendered. Processing has failed.");
+            return;
+        }
+
+        if (webpBytes is null)
+        {
+            _logger.LogInformation("Animated frame pixel dimensions exceeded limits for user {UserId}", userId);
+            await FollowupAsync("The rendered animation exceeds delivery limits. Processing has been rejected.");
+            return;
+        }
+
+        _logger.LogInformation("Animated WebP export: {Bytes} bytes for user {UserId}", webpBytes.Length, userId);
+
+        // Build original file
+        RenderFile? originalFile = null;
+        if (showOriginal)
+        {
+            var ext = FormatExtensionHelper.GetExtension(animOk.Format);
+            originalFile = new RenderFile
+            {
+                Content  = animOk.OriginalBytes,
+                Filename = $"asciibot-original{ext}",
+            };
+        }
+
+        // Delivery decision
+        var deliveryResult = _delivery.DecideAnimated(webpBytes, showOriginal, originalFile);
+        _logger.LogInformation("Animated delivery decision for user {UserId}: {Mode}",
+            userId, deliveryResult.GetType().Name);
+
+        switch (deliveryResult)
+        {
+            case DeliveryResult.Animated animated:
+                await DeliverAnimatedAsync(animated);
+                break;
+
+            case DeliveryResult.Rejected rejected:
+                _logger.LogInformation("Animated delivery rejected for user {UserId}: {Message}",
+                    userId, rejected.Message);
+                await FollowupAsync(rejected.Message);
+                break;
+        }
+    }
+
+    private async Task DeliverAnimatedAsync(DeliveryResult.Animated animated)
+    {
+        try
+        {
+            await UploadAnimatedAsync(animated, includeOriginal: animated.OriginalImage is not null);
+        }
+        catch (Exception ex) when (IsUploadTooLargeException(ex) && animated.OriginalImage is not null)
+        {
+            _logger.LogWarning(ex, "Upload too large with original; retrying animated without original");
+            try
+            {
+                var text = animated.CompletionText.Contains("omitted")
+                    ? animated.CompletionText
+                    : animated.CompletionText + "\n" + OutputDeliveryService.OmissionNote;
+                var omitted = new DeliveryResult.Animated
+                {
+                    CompletionText = text,
+                    WebPRender     = animated.WebPRender,
+                    OriginalImage  = null,
+                };
+                await UploadAnimatedAsync(omitted, includeOriginal: false);
+            }
+            catch (Exception retryEx)
+            {
+                _logger.LogError(retryEx, "Failed to upload animated result even without original");
+                try { await FollowupAsync("The rendered animation could not be delivered. Processing has failed."); }
+                catch { /* nothing more we can do */ }
+            }
+        }
+        catch (Exception ex) when (IsPermissionException(ex))
+        {
+            _logger.LogError(ex, "Permission failure delivering animated result");
+            try { await FollowupAsync("The rendered output could not be delivered due to insufficient permissions. Processing has failed."); }
+            catch { /* nothing more we can do */ }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to deliver animated result");
+            try { await FollowupAsync("The rendered animation could not be delivered. Processing has failed."); }
+            catch { /* nothing more we can do */ }
+        }
+    }
+
+    private async Task UploadAnimatedAsync(DeliveryResult.Animated animated, bool includeOriginal)
+    {
+        using var webpStream = new MemoryStream(animated.WebPRender.Content);
+        var attachments = new List<Discord.FileAttachment>
+        {
+            new(webpStream, animated.WebPRender.Filename),
+        };
+
+        MemoryStream? origStream = null;
+        try
+        {
+            if (includeOriginal && animated.OriginalImage is { } orig)
+            {
+                origStream = new MemoryStream(orig.Content);
+                attachments.Add(new Discord.FileAttachment(origStream, orig.Filename));
+            }
+
+            await Context.Interaction.FollowupWithFilesAsync(
+                attachments: attachments,
+                text:        animated.CompletionText);
+        }
+        finally
+        {
+            origStream?.Dispose();
         }
     }
 

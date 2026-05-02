@@ -17,9 +17,13 @@ public sealed class AsciiRenderService
     public RichAsciiRender Render(Image<Rgba32> image, SizePreset size, DetailPreset detail)
     {
         image.Mutate(x => x.AutoOrient());
-
         var (cols, rows) = ComputeDimensions(image.Width, image.Height, size);
+        return RenderFrame(image, cols, rows, detail);
+    }
 
+    // Renders a pre-oriented frame at explicit grid dimensions (used for animation frames).
+    public RichAsciiRender RenderFrame(Image<Rgba32> image, int cols, int rows, DetailPreset detail)
+    {
         var cells = new RichAsciiCell[rows][];
 
         for (var row = 0; row < rows; row++)

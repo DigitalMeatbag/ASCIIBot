@@ -1,27 +1,29 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace ASCIIBot.Services;
 
 public sealed class ImageDownloadService
 {
-    private const long MaxBytes = 10 * 1024 * 1024; // 10 MiB
-
+    private readonly BotOptions _options;
     private readonly IHttpClientFactory _httpFactory;
     private readonly ILogger<ImageDownloadService> _logger;
 
-    public ImageDownloadService(IHttpClientFactory httpFactory, ILogger<ImageDownloadService> logger)
+    public ImageDownloadService(
+        IOptions<BotOptions>          options,
+        IHttpClientFactory            httpFactory,
+        ILogger<ImageDownloadService> logger)
     {
+        _options     = options.Value;
         _httpFactory = httpFactory;
         _logger      = logger;
     }
 
-    /// <summary>
-    /// Downloads up to 10 MiB from <paramref name="url"/> into a <see cref="MemoryStream"/>.
-    /// Throws <see cref="ImageTooLargeException"/> if the reported or streamed size exceeds the limit.
-    /// </summary>
     public async Task<MemoryStream> DownloadAsync(string url, long? reportedSize, CancellationToken ct)
     {
-        if (reportedSize.HasValue && reportedSize.Value > MaxBytes)
+        long limit = _options.SourceImageByteLimit;
+
+        if (reportedSize.HasValue && reportedSize.Value > limit)
             throw new ImageTooLargeException();
 
         var client   = _httpFactory.CreateClient("images");
@@ -35,7 +37,7 @@ public sealed class ImageDownloadService
         int read;
         while ((read = await stream.ReadAsync(buffer, ct)) > 0)
         {
-            if (ms.Length + read > MaxBytes)
+            if (ms.Length + read > limit)
                 throw new ImageTooLargeException();
             ms.Write(buffer, 0, read);
         }
@@ -48,5 +50,5 @@ public sealed class ImageDownloadService
 
 public sealed class ImageTooLargeException : Exception
 {
-    public ImageTooLargeException() : base("Source image exceeds 10 MiB limit.") { }
+    public ImageTooLargeException() : base("Source image exceeds configured size limit.") { }
 }

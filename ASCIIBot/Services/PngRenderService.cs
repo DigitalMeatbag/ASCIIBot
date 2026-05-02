@@ -49,8 +49,7 @@ public sealed class PngRenderService
 
     public byte[]? TryRenderPng(RichAsciiRender render, bool colorEnabled)
     {
-        int imgWidth  = Padding * 2 + render.Width  * _cellWidth;
-        int imgHeight = Padding * 2 + render.Height * _cellHeight;
+        var (imgWidth, imgHeight) = ComputePixelDimensions(render.Width, render.Height);
 
         if (imgWidth  > _options.RenderPngMaxWidth ||
             imgHeight > _options.RenderPngMaxHeight)
@@ -60,6 +59,26 @@ public sealed class PngRenderService
         }
 
         using var image = new Image<Rgba32>(imgWidth, imgHeight);
+        RasterizeFrame(image, render, colorEnabled);
+
+        using var ms = new MemoryStream();
+        image.SaveAsPng(ms);
+        var bytes = ms.ToArray();
+
+        if (bytes.Length > _options.RenderPngByteLimit)
+        {
+            _logger.LogDebug("PNG byte size {Bytes} exceeds limit, rejecting", bytes.Length);
+            return null;
+        }
+
+        return bytes;
+    }
+
+    internal (int Width, int Height) ComputePixelDimensions(int cols, int rows) =>
+        (Padding * 2 + cols * _cellWidth, Padding * 2 + rows * _cellHeight);
+
+    internal void RasterizeFrame(Image<Rgba32> image, RichAsciiRender render, bool colorEnabled)
+    {
         image.Mutate(ctx =>
         {
             ctx.Fill(Background);
@@ -84,18 +103,6 @@ public sealed class PngRenderService
                 }
             }
         });
-
-        using var ms = new MemoryStream();
-        image.SaveAsPng(ms);
-        var bytes = ms.ToArray();
-
-        if (bytes.Length > _options.RenderPngByteLimit)
-        {
-            _logger.LogDebug("PNG byte size {Bytes} exceeds limit, rejecting", bytes.Length);
-            return null;
-        }
-
-        return bytes;
     }
 
     private static Color AdjustContrast(RgbColor fg)
