@@ -5,7 +5,7 @@ A Discord bot that converts static images to ASCII art via slash command.
 ## Usage
 
 ```
-/ascii image:<attachment> [size] [color]
+/ascii image:<attachment> [size] [color] [detail] [show_original]
 ```
 
 | Option | Values | Default | Description |
@@ -13,12 +13,14 @@ A Discord bot that converts static images to ASCII art via slash command.
 | `image` | attachment | — | Image to convert (required) |
 | `size` | `small`, `medium`, `large` | `medium` | Output character grid size |
 | `color` | `on`, `off` | `on` | ANSI color in Discord `ansi` code blocks |
+| `detail` | `low`, `normal`, `high` | `normal` | Sampling detail within the size budget |
+| `show_original` | true/false | `true` | Attach the original image alongside the render |
 
 All responses are public in-channel. The bot acknowledges accepted requests immediately and posts the result when conversion completes.
 
 ## Output
 
-Small renders fit inline as a Discord `ansi` code block. Larger renders are delivered as a plain `.txt` attachment.
+Small renders fit inline as a Discord `ansi` code block. Larger renders are delivered as a PNG image and plain `.txt` attachment. If neither fits within delivery limits, the request is rejected with an explanation.
 
 | Size | Columns | Max rows |
 |------|--------:|---------:|
@@ -49,6 +51,10 @@ All configuration is via environment variables:
 | `ASCIIBot_LogLevel` | no | `Information` | Log level (`Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical`) |
 | `ASCIIBot_AttachmentByteLimit` | no | `1000000` | Max `.txt` attachment size in bytes |
 | `ASCIIBot_InlineCharacterLimit` | no | `2000` | Max inline message characters including formatting |
+| `ASCIIBot_RenderPngByteLimit` | no | `8388608` | Max rendered PNG size in bytes |
+| `ASCIIBot_TotalUploadByteLimit` | no | `12582912` | Max total upload size per response in bytes |
+| `ASCIIBot_RenderPngMaxWidth` | no | `4096` | Max rendered PNG width in pixels |
+| `ASCIIBot_RenderPngMaxHeight` | no | `4096` | Max rendered PNG height in pixels |
 
 ### Running
 
@@ -96,11 +102,12 @@ dotnet build ASCIIBot.slnx
 dotnet test ASCIIBot.slnx
 ```
 
-47 unit tests covering rendering, color mapping, delivery decisions, image validation, and concurrency.
+116 unit tests covering rendering, color mapping, delivery decisions, image validation, and concurrency.
 
 ## Stack
 
 - .NET 10
 - [Discord.Net](https://github.com/discord-net/Discord.Net) 3.x
 - [SixLabors.ImageSharp](https://github.com/SixLabors/ImageSharp) 3.x
+- [SixLabors.ImageSharp.Drawing](https://github.com/SixLabors/ImageSharp.Drawing) 2.x
 - Microsoft.Extensions.Hosting

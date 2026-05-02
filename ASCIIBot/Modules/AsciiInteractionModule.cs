@@ -8,19 +8,19 @@ namespace ASCIIBot.Modules;
 
 public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInteractionContext>
 {
-    private readonly ConcurrencyGate _concurrency;
-    private readonly ImageDownloadService _downloader;
+    private readonly ConcurrencyGate        _concurrency;
+    private readonly ImageDownloadService   _downloader;
     private readonly ImageValidationService _validator;
-    private readonly AsciiRenderService _renderer;
-    private readonly OutputDeliveryService _delivery;
+    private readonly AsciiRenderService     _renderer;
+    private readonly OutputDeliveryService  _delivery;
     private readonly ILogger<AsciiInteractionModule> _logger;
 
     public AsciiInteractionModule(
-        ConcurrencyGate concurrency,
-        ImageDownloadService downloader,
-        ImageValidationService validator,
-        AsciiRenderService renderer,
-        OutputDeliveryService delivery,
+        ConcurrencyGate         concurrency,
+        ImageDownloadService    downloader,
+        ImageValidationService  validator,
+        AsciiRenderService      renderer,
+        OutputDeliveryService   delivery,
         ILogger<AsciiInteractionModule> logger)
     {
         _concurrency = concurrency;
@@ -34,18 +34,22 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
     [SlashCommand("ascii", "Convert an image to ASCII art")]
     public async Task AsciiAsync(
         IAttachment image,
-        [Summary("size"), Choice("small", "small"), Choice("medium", "medium"), Choice("large", "large")]
-        string size = "medium",
-        [Summary("color"), Choice("on", "on"), Choice("off", "off")]
-        string color = "on")
+        [Summary("size"),   Choice("small", "small"), Choice("medium", "medium"), Choice("large", "large")]
+        string size          = "medium",
+        [Summary("color"),  Choice("on", "on"), Choice("off", "off")]
+        string color         = "on",
+        [Summary("detail"), Choice("low", "low"), Choice("normal", "normal"), Choice("high", "high")]
+        string detail        = "normal",
+        [Summary("show_original")]
+        bool   showOriginal  = true)
     {
         var userId = Context.User.Id;
-        _logger.LogInformation("Request accepted from user {UserId} size={Size} color={Color}", userId, size, color);
+        _logger.LogInformation(
+            "Request accepted from user {UserId} size={Size} color={Color} detail={Detail} show_original={ShowOriginal}",
+            userId, size, color, detail, showOriginal);
 
-        // Defer publicly — shows loading indicator in channel
         await DeferAsync(ephemeral: false);
 
-        // Concurrency check
         if (!_concurrency.TryAcquire(userId, out var handle, out var rejection))
         {
             var busyMsg = rejection == ConcurrencyRejection.UserBusy
@@ -56,7 +60,6 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
             return;
         }
 
-        // Public acknowledgement — sent immediately so the user sees it before conversion
         IUserMessage ackMsg;
         try
         {
@@ -69,7 +72,6 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
             return;
         }
 
-        // 10-second long-running status notice
         using var timerCts = new CancellationTokenSource();
         var statusTask = Task.Run(async () =>
         {
@@ -83,7 +85,7 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
 
         try
         {
-            await ProcessRequestAsync(image, size, color, userId, handle);
+            await ProcessRequestAsync(image, size, color, detail, showOriginal, userId, handle);
         }
         finally
         {
@@ -94,15 +96,16 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
     }
 
     private async Task ProcessRequestAsync(
-        IAttachment image,
-        string size,
-        string color,
-        ulong userId,
+        IAttachment       image,
+        string            size,
+        string            color,
+        string            detail,
+        bool              showOriginal,
+        ulong             userId,
         ConcurrencyHandle handle)
     {
-        _ = handle; // handle lifetime managed by caller
+        _ = handle;
 
-        // Download
         MemoryStream imageStream;
         try
         {
@@ -123,7 +126,6 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
 
         await using (imageStream)
         {
-            // Validate
             var validationResult = await _validator.ValidateAsync(imageStream);
 
             if (validationResult is ValidationResult.Error validationError)
@@ -136,13 +138,26 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
             var ok = (ValidationResult.Ok)validationResult;
             using var decodedImage = ok.Image;
 
-            // Render
-            AsciiRenderResult renderResult;
+            RenderFile? originalFile = null;
+            if (showOriginal)
+            {
+                var ext = FormatExtensionHelper.GetExtension(ok.Format);
+                originalFile = new RenderFile
+                {
+                    Content  = ok.OriginalBytes,
+                    Filename = $"asciibot-original{ext}",
+                };
+            }
+
+            RichAsciiRender render;
             try
             {
-                var preset = SizePreset.FromString(size);
-                renderResult = _renderer.Render(decodedImage, preset);
-                _logger.LogInformation("Conversion completed for user {UserId}: {Cols}x{Rows}", userId, renderResult.Columns, renderResult.Rows);
+                var preset       = SizePreset.FromString(size);
+                var detailPreset = DetailPreset.FromString(detail);
+                render = _renderer.Render(decodedImage, preset, detailPreset);
+                _logger.LogInformation(
+                    "Rich render completed for user {UserId}: {Cols}x{Rows}",
+                    userId, render.Width, render.Height);
             }
             catch (Exception ex)
             {
@@ -151,35 +166,48 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
                 return;
             }
 
-            // Deliver
-            var colorEnabled  = color != "off";
-            var deliveryResult = _delivery.Decide(renderResult, colorEnabled);
+            var colorEnabled   = color != "off";
+            var deliveryResult = _delivery.Decide(render, colorEnabled, showOriginal, originalFile);
+
+            _logger.LogInformation("Delivery mode selected for user {UserId}: {Mode}",
+                userId, deliveryResult.GetType().Name);
 
             switch (deliveryResult)
             {
                 case DeliveryResult.Inline inline:
-                    _logger.LogInformation("Delivering inline for user {UserId}", userId);
-                    await DeliverInlineAsync(inline.Message);
+                    await DeliverInlineAsync(inline);
                     break;
 
-                case DeliveryResult.Attachment attachment:
-                    _logger.LogInformation("Delivering attachment for user {UserId}", userId);
-                    await DeliverAttachmentAsync(attachment);
+                case DeliveryResult.NonInline nonInline:
+                    await DeliverNonInlineAsync(nonInline);
                     break;
 
                 case DeliveryResult.Rejected rejected:
-                    _logger.LogInformation("Delivery rejected (output too large) for user {UserId}", userId);
+                    _logger.LogInformation("Delivery rejected for user {UserId}", userId);
                     await FollowupAsync(rejected.Message);
                     break;
             }
         }
     }
 
-    private async Task DeliverInlineAsync(string message)
+    private async Task DeliverInlineAsync(DeliveryResult.Inline inline)
     {
         try
         {
-            await FollowupAsync(message);
+            var fullMessage = inline.CompletionText + inline.InlinePayload;
+
+            if (inline.OriginalImage is { } orig)
+            {
+                using var origStream = new MemoryStream(orig.Content);
+                await Context.Interaction.FollowupWithFileAsync(
+                    fileStream: origStream,
+                    fileName:   orig.Filename,
+                    text:       fullMessage);
+            }
+            else
+            {
+                await FollowupAsync(fullMessage);
+            }
         }
         catch (Exception ex) when (IsPermissionException(ex))
         {
@@ -190,34 +218,91 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to deliver inline result");
-            await FollowupAsync("The rendered output could not be delivered. Processing has failed.");
+            try { await FollowupAsync("The rendered output could not be delivered. Processing has failed."); }
+            catch { /* nothing more we can do */ }
         }
     }
 
-    private async Task DeliverAttachmentAsync(DeliveryResult.Attachment attachment)
+    private async Task DeliverNonInlineAsync(DeliveryResult.NonInline nonInline)
     {
         try
         {
-            using var stream = new MemoryStream(attachment.Content);
-            await Context.Interaction.FollowupWithFileAsync(
-                fileStream: stream,
-                fileName:   attachment.Filename,
-                text:       attachment.Message);
+            await UploadNonInlineAsync(nonInline, includeOriginal: nonInline.OriginalImage is not null);
+        }
+        catch (Exception ex) when (IsUploadTooLargeException(ex) && nonInline.OriginalImage is not null)
+        {
+            _logger.LogWarning(ex, "Upload too large with original image; retrying without it");
+            try
+            {
+                var text = nonInline.CompletionText.Contains("omitted")
+                    ? nonInline.CompletionText
+                    : nonInline.CompletionText + "\n" + OutputDeliveryService.OmissionNote;
+                var omitted = new DeliveryResult.NonInline
+                {
+                    CompletionText = text,
+                    PngRender      = nonInline.PngRender,
+                    TxtRender      = nonInline.TxtRender,
+                    OriginalImage  = null,
+                };
+                await UploadNonInlineAsync(omitted, includeOriginal: false);
+            }
+            catch (Exception retryEx)
+            {
+                _logger.LogError(retryEx, "Failed to upload non-inline result even without original image");
+                try { await FollowupAsync("The rendered output could not be delivered. Processing has failed."); }
+                catch { /* nothing more we can do */ }
+            }
         }
         catch (Exception ex) when (IsPermissionException(ex))
         {
-            _logger.LogError(ex, "Permission failure uploading attachment");
+            _logger.LogError(ex, "Permission failure uploading non-inline result");
             try { await FollowupAsync("The rendered output could not be delivered due to insufficient permissions. Processing has failed."); }
             catch { /* nothing more we can do */ }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to upload attachment");
-            await FollowupAsync("The rendered output could not be delivered. Processing has failed.");
+            _logger.LogError(ex, "Failed to upload non-inline result");
+            try { await FollowupAsync("The rendered output could not be delivered. Processing has failed."); }
+            catch { /* nothing more we can do */ }
+        }
+    }
+
+    private async Task UploadNonInlineAsync(DeliveryResult.NonInline nonInline, bool includeOriginal)
+    {
+        using var pngStream = new MemoryStream(nonInline.PngRender.Content);
+        using var txtStream = new MemoryStream(nonInline.TxtRender.Content);
+
+        var attachments = new List<Discord.FileAttachment>
+        {
+            new(pngStream, nonInline.PngRender.Filename),
+            new(txtStream, nonInline.TxtRender.Filename),
+        };
+
+        MemoryStream? origStream = null;
+        try
+        {
+            if (includeOriginal && nonInline.OriginalImage is { } orig)
+            {
+                origStream = new MemoryStream(orig.Content);
+                attachments.Add(new Discord.FileAttachment(origStream, orig.Filename));
+            }
+
+            await Context.Interaction.FollowupWithFilesAsync(
+                attachments: attachments,
+                text:        nonInline.CompletionText);
+        }
+        finally
+        {
+            origStream?.Dispose();
         }
     }
 
     private static bool IsPermissionException(Exception ex) =>
         ex.Message.Contains("Missing Permissions", StringComparison.OrdinalIgnoreCase) ||
         ex.Message.Contains("Missing Access",      StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsUploadTooLargeException(Exception ex) =>
+        ex.Message.Contains("Request entity too large", StringComparison.OrdinalIgnoreCase) ||
+        ex.Message.Contains("40005",                   StringComparison.OrdinalIgnoreCase) ||
+        ex.Message.Contains("payload_too_large",        StringComparison.OrdinalIgnoreCase);
 }

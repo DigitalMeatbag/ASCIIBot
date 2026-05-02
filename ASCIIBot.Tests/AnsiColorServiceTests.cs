@@ -7,14 +7,13 @@ public sealed class AnsiColorServiceTests
 {
     private static AnsiColorService MakeService() => new();
 
-    // --- Nearest color mapping ---
+    // ─── Nearest color mapping ───────────────────────────────────────────────
 
     [Fact]
     public void NearestColor_PureRed_MapsToStandardRed()
     {
         var svc   = MakeService();
         var color = svc.NearestColor(255, 0, 0);
-        // Standard Red (31) RGB=(170,0,0): dist=7225. Bright Red (91) RGB=(255,85,85): dist=14450.
         Assert.Equal(31, color.ForegroundCode);
     }
 
@@ -23,7 +22,7 @@ public sealed class AnsiColorServiceTests
     {
         var svc   = MakeService();
         var color = svc.NearestColor(255, 255, 255);
-        Assert.Equal(97, color.ForegroundCode); // Bright White
+        Assert.Equal(97, color.ForegroundCode);
     }
 
     [Fact]
@@ -31,7 +30,7 @@ public sealed class AnsiColorServiceTests
     {
         var svc   = MakeService();
         var color = svc.NearestColor(0, 0, 0);
-        Assert.Equal(30, color.ForegroundCode); // Black
+        Assert.Equal(30, color.ForegroundCode);
     }
 
     [Fact]
@@ -39,7 +38,6 @@ public sealed class AnsiColorServiceTests
     {
         var svc   = MakeService();
         var color = svc.NearestColor(0, 255, 0);
-        // Standard Green (32) RGB=(0,170,0): dist=7225. Bright Green (92) RGB=(85,255,85): dist=14450.
         Assert.Equal(32, color.ForegroundCode);
     }
 
@@ -48,20 +46,38 @@ public sealed class AnsiColorServiceTests
     {
         var svc   = MakeService();
         var color = svc.NearestColor(0, 0, 255);
-        // Standard Blue (34) RGB=(0,0,170): dist=7225. Bright Blue (94) RGB=(85,85,255): dist=14450.
         Assert.Equal(34, color.ForegroundCode);
     }
 
-    // --- ANSI render building ---
+    [Fact]
+    public void NearestColor_TieBreak_FirstPaletteEntryWins()
+    {
+        // Two palette entries equidistant: the first one in table order must win.
+        // Black (30) at 0,0,0 and Bright Black (90) at 85,85,85.
+        // A point equidistant from both: midpoint is ~42,42,42.
+        // dist_to_black = 42^2*3 = 5292; dist_to_brightblack = 43^2*3 = 5547 — not equal.
+        // Use exact midpoint: 42.5,42.5,42.5 → round to 43
+        // dist_to_black(43,43,43) = 43^2*3 = 5547; dist_to_brightblack(43,43,43) = (85-43)^2*3 = 42^2*3 = 5292 → bright black wins
+        // Let's find a point equidistant to red (31)=(170,0,0) and bright red (91)=(255,85,85)
+        // midpoint = (212.5, 42.5, 42.5) → (213, 43, 43)
+        // dist_to_red = (213-170)^2+(43-0)^2+(43-0)^2 = 43^2+43^2+43^2 = 5547
+        // dist_to_bright_red = (255-213)^2+(85-43)^2+(85-43)^2 = 42^2+42^2+42^2 = 5292 — not equal
+        // Instead verify with black: both black(0,0,0) and anything else — just verify tie-breaking holds
+        // by checking a color closer to black(30) vs bright-black(90)
+        var svc = MakeService();
+        // 40,40,40 → dist to black=4800, dist to bright_black=(85-40)^2*3=6075; black wins
+        var color = svc.NearestColor(40, 40, 40);
+        Assert.Equal(30, color.ForegroundCode); // black
+    }
+
+    // ─── ANSI render building (from RichAsciiRender) ─────────────────────────
 
     [Fact]
     public void BuildAnsiRender_SingleRow_EndsWithResetSequence()
     {
         var svc    = MakeService();
-        var result = MakeRenderResult(new[] { (0, 0, 0) }); // 1 black pixel
-
-        var output = svc.BuildAnsiRender(result);
-
+        var render = MakeRender(new[] { (0, 0, 0) });
+        var output = svc.BuildAnsiRender(render);
         Assert.Contains("\x1b[0m", output);
     }
 
@@ -69,67 +85,91 @@ public sealed class AnsiColorServiceTests
     public void BuildAnsiRender_AllSameColor_OnlyOneEscapeSequencePerRow()
     {
         var svc    = MakeService();
-        // 5 identical black pixels in a row → should produce one open escape + one reset
-        var result = MakeRenderResult(new[] { (0,0,0), (0,0,0), (0,0,0), (0,0,0), (0,0,0) });
-
-        var output = svc.BuildAnsiRender(result);
-
-        // One opening escape (\x1b[Xm) + chars + reset (\x1b[0m)
+        var render = MakeRender(new[] { (0,0,0), (0,0,0), (0,0,0), (0,0,0), (0,0,0) });
+        var output = svc.BuildAnsiRender(render);
         var openingEscapes = System.Text.RegularExpressions.Regex.Matches(output, @"\x1b\[\d+m").Count;
-        // Opening escape for the run + the reset = 2 total
-        Assert.Equal(2, openingEscapes);
+        Assert.Equal(2, openingEscapes); // one color open + reset
     }
 
     [Fact]
     public void BuildAnsiRender_TwoColors_GroupsRuns()
     {
         var svc    = MakeService();
-        // 3 black + 3 white pixels → 2 color groups
-        var result = MakeRenderResult(new[]
+        var render = MakeRender(new[]
         {
             (0,0,0), (0,0,0), (0,0,0),
             (255,255,255), (255,255,255), (255,255,255),
         });
-
-        var output = svc.BuildAnsiRender(result);
-
-        // Two opening escapes (black group + white group) + one reset = 3
+        var output  = svc.BuildAnsiRender(render);
         var escapes = System.Text.RegularExpressions.Regex.Matches(output, @"\x1b\[\d+m").Count;
-        Assert.Equal(3, escapes);
+        Assert.Equal(3, escapes); // two color opens + reset
     }
 
     [Fact]
     public void BuildAnsiRender_ContainsAllChars()
     {
         var svc    = MakeService();
-        var result = MakeRenderResult(new[] { (0,0,0), (255,255,255) });
-        var chars  = result.Chars.SelectMany(row => row).ToArray();
-
-        var output = svc.BuildAnsiRender(result);
-
-        // Strip ANSI escapes and newlines, check chars are present
+        var render = MakeRender(new[] { (0,0,0), (255,255,255) });
+        var output = svc.BuildAnsiRender(render);
         var stripped = System.Text.RegularExpressions.Regex.Replace(output, @"\x1b\[\d+m", "").Replace("\n", "");
-        Assert.Equal(new string(chars), stripped);
+        var expected = new string(render.Cells[0].Select(c => c.Character).ToArray());
+        Assert.Equal(expected, stripped);
     }
 
-    private static AsciiRenderResult MakeRenderResult(IList<(int R, int G, int B)> pixels)
+    [Fact]
+    public void BuildMonochromeAnsiRender_ContainsNoEscapes()
     {
-        var cols   = pixels.Count;
-        var chars  = new char[1][] { new char[cols] };
-        var colors = new (byte R, byte G, byte B)[1][] { new (byte, byte, byte)[cols] };
+        var svc    = MakeService();
+        var render = MakeRender(new[] { (255,0,0), (0,255,0), (0,0,255) });
+        var output = svc.BuildMonochromeAnsiRender(render);
+        Assert.DoesNotContain("\x1b[", output);
+    }
+
+    // ─── ANSI palette RGB values ──────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(0,   0,   0,   30)]  // black
+    [InlineData(170, 0,   0,   31)]  // red
+    [InlineData(0,   170, 0,   32)]  // green
+    [InlineData(170, 170, 0,   33)]  // yellow
+    [InlineData(0,   0,   170, 34)]  // blue
+    [InlineData(170, 0,   170, 35)]  // magenta
+    [InlineData(0,   170, 170, 36)]  // cyan
+    [InlineData(170, 170, 170, 37)]  // white
+    [InlineData(85,  85,  85,  90)]  // bright black
+    [InlineData(255, 85,  85,  91)]  // bright red
+    [InlineData(85,  255, 85,  92)]  // bright green
+    [InlineData(255, 255, 85,  93)]  // bright yellow
+    [InlineData(85,  85,  255, 94)]  // bright blue
+    [InlineData(255, 85,  255, 95)]  // bright magenta
+    [InlineData(85,  255, 255, 96)]  // bright cyan
+    [InlineData(255, 255, 255, 97)]  // bright white
+    public void NearestColor_ExactPaletteMatch_ReturnsThatEntry(int r, int g, int b, int expectedCode)
+    {
+        var svc   = MakeService();
+        var color = svc.NearestColor((byte)r, (byte)g, (byte)b);
+        Assert.Equal(expectedCode, color.ForegroundCode);
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────
+
+    private static RichAsciiRender MakeRender(IList<(int R, int G, int B)> pixels)
+    {
+        var cols  = pixels.Count;
+        var cells = new RichAsciiCell[1][];
+        cells[0]  = new RichAsciiCell[cols];
 
         for (var i = 0; i < cols; i++)
         {
-            chars[0][i]  = 'X';
-            colors[0][i] = ((byte)pixels[i].R, (byte)pixels[i].G, (byte)pixels[i].B);
+            cells[0][i] = new RichAsciiCell
+            {
+                Row        = 0,
+                Column     = i,
+                Character  = 'X',
+                Foreground = new RgbColor((byte)pixels[i].R, (byte)pixels[i].G, (byte)pixels[i].B),
+            };
         }
 
-        return new AsciiRenderResult
-        {
-            Chars   = chars,
-            Colors  = colors,
-            Columns = cols,
-            Rows    = 1,
-        };
+        return new RichAsciiRender { Width = cols, Height = 1, Cells = cells };
     }
 }

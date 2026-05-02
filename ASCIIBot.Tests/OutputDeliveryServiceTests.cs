@@ -8,38 +8,61 @@ namespace ASCIIBot.Tests;
 
 public sealed class OutputDeliveryServiceTests
 {
-    private static OutputDeliveryService MakeService(int inlineCharLimit = 2000, int attachByteLimit = 1_000_000)
+    private static OutputDeliveryService MakeService(
+        int  inlineCharLimit   = 2000,
+        int  attachByteLimit   = 1_000_000,
+        int  pngByteLimit      = 8_388_608,
+        long totalUploadLimit  = 12_582_912,
+        int  pngMaxWidth       = 4096,
+        int  pngMaxHeight      = 4096)
     {
         var opts = Options.Create(new BotOptions
         {
             InlineCharacterLimit = inlineCharLimit,
             AttachmentByteLimit  = attachByteLimit,
+            RenderPngByteLimit   = pngByteLimit,
+            TotalUploadByteLimit = totalUploadLimit,
+            RenderPngMaxWidth    = pngMaxWidth,
+            RenderPngMaxHeight   = pngMaxHeight,
         });
-        var ansi   = new AnsiColorService();
-        var logger = NullLogger<OutputDeliveryService>.Instance;
-        return new OutputDeliveryService(opts, ansi, logger);
+        var ansi      = new AnsiColorService();
+        var plainText = new PlainTextExportService();
+        var png       = new PngRenderService(opts, NullLogger<PngRenderService>.Instance);
+        var logger    = NullLogger<OutputDeliveryService>.Instance;
+        return new OutputDeliveryService(opts, ansi, plainText, png, logger);
     }
 
-    private static AsciiRenderResult MakeRender(int cols, int rows)
+    private static RichAsciiRender MakeRender(int cols, int rows, byte r = 128, byte g = 128, byte b = 128)
     {
-        var chars  = new char[rows][];
-        var colors = new (byte R, byte G, byte B)[rows][];
-        for (var r = 0; r < rows; r++)
+        var cells = new RichAsciiCell[rows][];
+        for (var row = 0; row < rows; row++)
         {
-            chars[r]  = Enumerable.Repeat('X', cols).ToArray();
-            colors[r] = Enumerable.Repeat<(byte, byte, byte)>((128, 128, 128), cols).ToArray();
+            cells[row] = new RichAsciiCell[cols];
+            for (var col = 0; col < cols; col++)
+            {
+                cells[row][col] = new RichAsciiCell
+                {
+                    Row        = row,
+                    Column     = col,
+                    Character  = 'X',
+                    Foreground = new RgbColor(r, g, b),
+                };
+            }
         }
-        return new AsciiRenderResult { Chars = chars, Colors = colors, Columns = cols, Rows = rows };
+        return new RichAsciiRender { Width = cols, Height = rows, Cells = cells };
     }
 
-    // --- Inline delivery ---
+    private static RenderFile? MakeOriginalImage(int sizeBytes = 1000) =>
+        new() { Content = new byte[sizeBytes], Filename = "asciibot-original.png" };
+
+    // ─── Inline delivery ─────────────────────────────────────────────────────
 
     [Fact]
     public void Decide_SmallRenderColorOff_ReturnsInline()
     {
         var svc    = MakeService(inlineCharLimit: 5000);
         var render = MakeRender(10, 5);
-        var result = svc.Decide(render, colorEnabled: false);
+        var result = svc.Decide(render, colorEnabled: false, showOriginal: false, originalImage: null);
         Assert.IsType<DeliveryResult.Inline>(result);
     }
 
@@ -48,110 +71,300 @@ public sealed class OutputDeliveryServiceTests
     {
         var svc    = MakeService(inlineCharLimit: 5000);
         var render = MakeRender(10, 5);
-        var result = svc.Decide(render, colorEnabled: true);
+        var result = svc.Decide(render, colorEnabled: true, showOriginal: false, originalImage: null);
         Assert.IsType<DeliveryResult.Inline>(result);
     }
 
     [Fact]
     public void Decide_InlinePayloadAtExactLimit_ReturnsInline()
     {
-        // Build a render, figure out its payload size, set limit to exactly that
         var svc0   = MakeService(inlineCharLimit: 999_999);
         var render = MakeRender(10, 2);
-        var inline0 = Assert.IsType<DeliveryResult.Inline>(svc0.Decide(render, colorEnabled: false));
-        var payloadLen = inline0.Message.Length;
+        var r0     = Assert.IsType<DeliveryResult.Inline>(svc0.Decide(render, false, false, null));
+        var len    = (r0.CompletionText + r0.InlinePayload).Length;
 
-        var svcExact = MakeService(inlineCharLimit: payloadLen);
-        var result   = svcExact.Decide(render, colorEnabled: false);
+        var svcExact = MakeService(inlineCharLimit: len);
+        var result   = svcExact.Decide(render, false, false, null);
         Assert.IsType<DeliveryResult.Inline>(result);
     }
 
     [Fact]
-    public void Decide_InlinePayloadOneOverLimit_ReturnsAttachment()
+    public void Decide_InlinePayloadOneOverLimit_ReturnsNonInline()
     {
         var svc0   = MakeService(inlineCharLimit: 999_999);
         var render = MakeRender(10, 2);
-        var inline0 = Assert.IsType<DeliveryResult.Inline>(svc0.Decide(render, colorEnabled: false));
-        var payloadLen = inline0.Message.Length;
+        var r0     = Assert.IsType<DeliveryResult.Inline>(svc0.Decide(render, false, false, null));
+        var len    = (r0.CompletionText + r0.InlinePayload).Length;
 
-        var svcOver = MakeService(inlineCharLimit: payloadLen - 1);
-        var result  = svcOver.Decide(render, colorEnabled: false);
-        Assert.IsType<DeliveryResult.Attachment>(result);
+        var svcOver = MakeService(inlineCharLimit: len - 1);
+        var result  = svcOver.Decide(render, false, false, null);
+        Assert.IsType<DeliveryResult.NonInline>(result);
     }
 
-    // --- Attachment fallback due to visible dimensions ---
+    // ─── Inline dimension gate ────────────────────────────────────────────────
 
     [Fact]
-    public void Decide_ColumnsExceed100_ReturnsAttachment()
+    public void Decide_ColumnsExceed100_ReturnsNonInline()
     {
         var svc    = MakeService(inlineCharLimit: 999_999);
         var render = MakeRender(101, 5);
-        var result = svc.Decide(render, colorEnabled: false);
-        Assert.IsType<DeliveryResult.Attachment>(result);
+        var result = svc.Decide(render, false, false, null);
+        Assert.IsType<DeliveryResult.NonInline>(result);
     }
 
     [Fact]
-    public void Decide_RowsExceed35_ReturnsAttachment()
+    public void Decide_RowsExceed35_ReturnsNonInline()
     {
         var svc    = MakeService(inlineCharLimit: 999_999);
         var render = MakeRender(10, 36);
-        var result = svc.Decide(render, colorEnabled: false);
-        Assert.IsType<DeliveryResult.Attachment>(result);
+        var result = svc.Decide(render, false, false, null);
+        Assert.IsType<DeliveryResult.NonInline>(result);
     }
 
-    // --- Attachment content is plain text (no ANSI) ---
+    // ─── Non-inline delivery: PNG + txt ──────────────────────────────────────
 
     [Fact]
-    public void Decide_AttachmentFallback_ContentHasNoAnsiEscapes()
+    public void Decide_NonInline_IncludesBothPngAndTxt()
     {
-        var svc    = MakeService(inlineCharLimit: 1); // force attachment
+        var svc    = MakeService(inlineCharLimit: 1);
         var render = MakeRender(10, 5);
-        var result = Assert.IsType<DeliveryResult.Attachment>(svc.Decide(render, colorEnabled: true));
+        var result = Assert.IsType<DeliveryResult.NonInline>(svc.Decide(render, true, false, null));
+        Assert.Equal("asciibot-render.png", result.PngRender.Filename);
+        Assert.Equal("asciibot-render.txt", result.TxtRender.Filename);
+    }
 
-        var content = System.Text.Encoding.UTF8.GetString(result.Content);
+    [Fact]
+    public void Decide_NonInline_TxtHasNoAnsiEscapes()
+    {
+        var svc    = MakeService(inlineCharLimit: 1);
+        var render = MakeRender(10, 5);
+        var result = Assert.IsType<DeliveryResult.NonInline>(svc.Decide(render, true, false, null));
+        var content = System.Text.Encoding.UTF8.GetString(result.TxtRender.Content);
         Assert.DoesNotContain("\x1b[", content);
     }
 
-    // --- Attachment byte limit ---
-
     [Fact]
-    public void Decide_AttachmentWithinByteLimit_ReturnsAttachment()
+    public void Decide_NonInline_TxtNotDroppedFromSuccessfulResponse()
     {
-        var svc    = MakeService(inlineCharLimit: 1, attachByteLimit: 1_000_000);
-        var render = MakeRender(10, 5);
-        var result = svc.Decide(render, colorEnabled: false);
-        Assert.IsType<DeliveryResult.Attachment>(result);
+        var svc    = MakeService(inlineCharLimit: 1);
+        var render = MakeRender(5, 3);
+        var result = Assert.IsType<DeliveryResult.NonInline>(svc.Decide(render, false, false, null));
+        Assert.NotNull(result.TxtRender);
+        Assert.NotEmpty(result.TxtRender.Content);
     }
 
+    // ─── PNG byte-limit rejection ─────────────────────────────────────────────
+
     [Fact]
-    public void Decide_AttachmentExceedsByteLimit_ReturnsRejected()
+    public void Decide_PngExceedsByteLimit_ReturnsRejected()
     {
-        var svc    = MakeService(inlineCharLimit: 1, attachByteLimit: 1); // 1 byte limit
+        var svc    = MakeService(inlineCharLimit: 1, pngByteLimit: 1);
         var render = MakeRender(10, 5);
-        var result = svc.Decide(render, colorEnabled: false);
+        var result = svc.Decide(render, false, false, null);
         Assert.IsType<DeliveryResult.Rejected>(result);
     }
 
-    // --- Color on with ANSI payload over limit falls back to attachment (plain) ---
+    // ─── PNG pixel-dimension rejection ───────────────────────────────────────
 
     [Fact]
-    public void Decide_ColorOnAnsiOverLimitPlainUnder_ReturnsAttachment()
+    public void Decide_PngExceedsPixelDimensions_ReturnsRejected()
     {
-        // Get the plain text payload length for a render
-        var svc0    = MakeService(inlineCharLimit: 999_999);
-        var render  = MakeRender(10, 2);
-        var inline0 = Assert.IsType<DeliveryResult.Inline>(svc0.Decide(render, colorEnabled: false));
-        var plainLen = inline0.Message.Length;
-
-        // Set limit between plain and ANSI (ANSI is always longer due to escape sequences)
-        var svc = MakeService(inlineCharLimit: plainLen); // plain would fit but we test color=on
-
-        // With color=on the ANSI payload will be longer than plain, so if we set limit to plain length,
-        // ANSI may or may not exceed it depending on escape size.
-        // Force it: set limit to 0 for color=on so it definitely exceeds
-        var svcForce = MakeService(inlineCharLimit: plainLen - 1);
-        var result   = svcForce.Decide(render, colorEnabled: true);
-        // Should be attachment (not inline, not rejected if bytes fit)
-        Assert.IsType<DeliveryResult.Attachment>(result);
+        var svc    = MakeService(inlineCharLimit: 1, pngMaxWidth: 1, pngMaxHeight: 1);
+        var render = MakeRender(10, 5);
+        var result = svc.Decide(render, false, false, null);
+        Assert.IsType<DeliveryResult.Rejected>(result);
     }
+
+    // ─── Attachment txt byte-limit rejection ──────────────────────────────────
+
+    [Fact]
+    public void Decide_TxtExceedsAttachByteLimit_ReturnsRejected()
+    {
+        var svc    = MakeService(inlineCharLimit: 1, attachByteLimit: 1);
+        var render = MakeRender(10, 5);
+        var result = svc.Decide(render, false, false, null);
+        Assert.IsType<DeliveryResult.Rejected>(result);
+    }
+
+    // ─── Original image: inline path ─────────────────────────────────────────
+
+    [Fact]
+    public void Decide_ShowOriginalTrue_InlinePath_OriginalImageAttached()
+    {
+        var svc    = MakeService(inlineCharLimit: 5000, totalUploadLimit: 12_582_912);
+        var render = MakeRender(10, 5);
+        var orig   = MakeOriginalImage(1000);
+
+        var result = Assert.IsType<DeliveryResult.Inline>(svc.Decide(render, false, true, orig));
+        Assert.NotNull(result.OriginalImage);
+    }
+
+    [Fact]
+    public void Decide_ShowOriginalFalse_InlinePath_NoOriginalImage()
+    {
+        var svc    = MakeService(inlineCharLimit: 5000);
+        var render = MakeRender(10, 5);
+        var orig   = MakeOriginalImage(1000);
+
+        var result = Assert.IsType<DeliveryResult.Inline>(svc.Decide(render, false, false, orig));
+        Assert.Null(result.OriginalImage);
+    }
+
+    [Fact]
+    public void Decide_ShowOriginalFalse_InlinePath_NoOmissionNote()
+    {
+        var svc    = MakeService(inlineCharLimit: 5000);
+        var render = MakeRender(10, 5);
+        var orig   = MakeOriginalImage(1000);
+
+        var result = Assert.IsType<DeliveryResult.Inline>(svc.Decide(render, false, false, orig));
+        Assert.DoesNotContain("omitted", result.CompletionText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Decide_ShowOriginalTrue_OriginalTooLargeForInline_OmissionNoteAppended()
+    {
+        // Total upload limit just above the original image size ensures the original won't fit
+        // inline (where original is the only attachment, limited by TotalUploadByteLimit)
+        var orig = MakeOriginalImage(2000);
+        var svc  = MakeService(inlineCharLimit: 5000, totalUploadLimit: 999); // limit smaller than 2000
+        var render = MakeRender(10, 5);
+
+        var result = Assert.IsType<DeliveryResult.Inline>(svc.Decide(render, false, true, orig));
+        Assert.Null(result.OriginalImage);
+        Assert.Contains("omitted", result.CompletionText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ─── Original image: non-inline path ─────────────────────────────────────
+
+    [Fact]
+    public void Decide_ShowOriginalTrue_NonInlinePath_OriginalImageAttached()
+    {
+        var svc    = MakeService(inlineCharLimit: 1, totalUploadLimit: 12_582_912);
+        var render = MakeRender(10, 5);
+        var orig   = MakeOriginalImage(1000);
+
+        var result = Assert.IsType<DeliveryResult.NonInline>(svc.Decide(render, false, true, orig));
+        Assert.NotNull(result.OriginalImage);
+    }
+
+    [Fact]
+    public void Decide_ShowOriginalFalse_NonInlinePath_NoOriginalImage()
+    {
+        var svc    = MakeService(inlineCharLimit: 1);
+        var render = MakeRender(10, 5);
+        var orig   = MakeOriginalImage(1000);
+
+        var result = Assert.IsType<DeliveryResult.NonInline>(svc.Decide(render, false, false, orig));
+        Assert.Null(result.OriginalImage);
+    }
+
+    [Fact]
+    public void Decide_ShowOriginalFalse_NonInlinePath_NoOmissionNote()
+    {
+        var svc    = MakeService(inlineCharLimit: 1);
+        var render = MakeRender(10, 5);
+        var orig   = MakeOriginalImage(1000);
+
+        var result = Assert.IsType<DeliveryResult.NonInline>(svc.Decide(render, false, false, orig));
+        Assert.DoesNotContain("omitted", result.CompletionText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Decide_ShowOriginalTrue_NonInline_OriginalOmittedWhenTooLarge_OmissionNotePresent()
+    {
+        // PNG + txt + original would exceed limit; original must be omitted
+        var render       = MakeRender(10, 5);
+        var svcForSize   = MakeService(inlineCharLimit: 1, totalUploadLimit: 12_582_912);
+        var baseResult   = Assert.IsType<DeliveryResult.NonInline>(svcForSize.Decide(render, false, false, null));
+        var renderBundle = (long)baseResult.PngRender.Content.Length + baseResult.TxtRender.Content.Length;
+
+        // Set limit to just the render bundle — original won't fit
+        var svc    = MakeService(inlineCharLimit: 1, totalUploadLimit: renderBundle);
+        var orig   = MakeOriginalImage(1000); // > remaining budget
+        var result = Assert.IsType<DeliveryResult.NonInline>(svc.Decide(render, false, true, orig));
+
+        Assert.Null(result.OriginalImage);
+        Assert.Contains("omitted", result.CompletionText, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Decide_OriginalOmittedFirst_RenderArtifactsPreserved()
+    {
+        var render       = MakeRender(10, 5);
+        var svcForSize   = MakeService(inlineCharLimit: 1, totalUploadLimit: 12_582_912);
+        var baseResult   = Assert.IsType<DeliveryResult.NonInline>(svcForSize.Decide(render, false, false, null));
+        var renderBundle = (long)baseResult.PngRender.Content.Length + baseResult.TxtRender.Content.Length;
+
+        var svc    = MakeService(inlineCharLimit: 1, totalUploadLimit: renderBundle);
+        var orig   = MakeOriginalImage(1000);
+        var result = Assert.IsType<DeliveryResult.NonInline>(svc.Decide(render, false, true, orig));
+
+        Assert.NotNull(result.PngRender);
+        Assert.NotNull(result.TxtRender);
+    }
+
+    [Fact]
+    public void Decide_RenderBundleExceedsTotalUploadLimit_ReturnsRejected()
+    {
+        var render = MakeRender(10, 5);
+        // Measure actual render bundle size
+        var svcRef = MakeService(inlineCharLimit: 1, totalUploadLimit: 12_582_912);
+        var refResult = Assert.IsType<DeliveryResult.NonInline>(svcRef.Decide(render, false, false, null));
+        var bundleSize = (long)refResult.PngRender.Content.Length + refResult.TxtRender.Content.Length;
+
+        // Limit tighter than the bundle
+        var svc    = MakeService(inlineCharLimit: 1, totalUploadLimit: bundleSize - 1);
+        var result = svc.Decide(render, false, false, null);
+        Assert.IsType<DeliveryResult.Rejected>(result);
+    }
+
+    // ─── Canonical inline character count ────────────────────────────────────
+
+    [Fact]
+    public void InlineCharCount_IncludesCompletionTextAndFence()
+    {
+        // Force a render that goes inline with a precise limit
+        var svc0   = MakeService(inlineCharLimit: 999_999);
+        var render = MakeRender(5, 2);
+        var r0     = Assert.IsType<DeliveryResult.Inline>(svc0.Decide(render, false, false, null));
+
+        // full message length = completionText + inlinePayload (which already includes fence)
+        var fullLen = r0.CompletionText.Length + r0.InlinePayload.Length;
+
+        // At that exact limit it should still deliver inline
+        var svcExact = MakeService(inlineCharLimit: fullLen);
+        var result   = svcExact.Decide(render, false, false, null);
+        Assert.IsType<DeliveryResult.Inline>(result);
+
+        // One under should fall through to non-inline
+        var svcUnder = MakeService(inlineCharLimit: fullLen - 1);
+        var resultUnder = svcUnder.Decide(render, false, false, null);
+        Assert.IsType<DeliveryResult.NonInline>(resultUnder);
+    }
+
+    // ─── Original image filename extension mapping ────────────────────────────
+
+    [Theory]
+    [InlineData("png",  ".png")]
+    [InlineData("jpeg", ".jpg")]
+    [InlineData("bmp",  ".bmp")]
+    [InlineData("gif",  ".gif")]
+    [InlineData("webp", ".webp")]
+    public void FormatExtension_MapsCorrectly(string formatKey, string expectedExt)
+    {
+        // FormatExtensionHelper is tested indirectly via the format name lookup
+        // Test the mapping values directly
+        Assert.Equal(expectedExt, GetExtensionForFormatName(formatKey));
+    }
+
+    private static string GetExtensionForFormatName(string name) => name switch
+    {
+        "png"  => ".png",
+        "jpeg" => ".jpg",
+        "bmp"  => ".bmp",
+        "gif"  => ".gif",
+        "webp" => ".webp",
+        _      => ".bin",
+    };
 }

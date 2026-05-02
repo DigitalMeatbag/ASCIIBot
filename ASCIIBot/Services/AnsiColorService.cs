@@ -7,27 +7,27 @@ public sealed class AnsiColorService
 {
     private static readonly AnsiColor[] Palette =
     [
-        new(  0,   0,   0, 30),   // Black
-        new(170,   0,   0, 31),   // Red
-        new(  0, 170,   0, 32),   // Green
-        new(170, 170,   0, 33),   // Yellow
-        new(  0,   0, 170, 34),   // Blue
-        new(170,   0, 170, 35),   // Magenta
-        new(  0, 170, 170, 36),   // Cyan
-        new(170, 170, 170, 37),   // White
-        new( 85,  85,  85, 90),   // Bright Black
-        new(255,  85,  85, 91),   // Bright Red
-        new( 85, 255,  85, 92),   // Bright Green
-        new(255, 255,  85, 93),   // Bright Yellow
-        new( 85,  85, 255, 94),   // Bright Blue
-        new(255,  85, 255, 95),   // Bright Magenta
-        new( 85, 255, 255, 96),   // Bright Cyan
-        new(255, 255, 255, 97),   // Bright White
+        new(  0,   0,   0, 30),   // black
+        new(170,   0,   0, 31),   // red
+        new(  0, 170,   0, 32),   // green
+        new(170, 170,   0, 33),   // yellow
+        new(  0,   0, 170, 34),   // blue
+        new(170,   0, 170, 35),   // magenta
+        new(  0, 170, 170, 36),   // cyan
+        new(170, 170, 170, 37),   // white
+        new( 85,  85,  85, 90),   // bright black
+        new(255,  85,  85, 91),   // bright red
+        new( 85, 255,  85, 92),   // bright green
+        new(255, 255,  85, 93),   // bright yellow
+        new( 85,  85, 255, 94),   // bright blue
+        new(255,  85, 255, 95),   // bright magenta
+        new( 85, 255, 255, 96),   // bright cyan
+        new(255, 255, 255, 97),   // bright white
     ];
 
     public AnsiColor NearestColor(byte r, byte g, byte b)
     {
-        AnsiColor best   = Palette[0];
+        AnsiColor best     = Palette[0];
         long      bestDist = long.MaxValue;
 
         foreach (var color in Palette)
@@ -46,22 +46,23 @@ public sealed class AnsiColorService
         return best;
     }
 
-    public string BuildAnsiRender(AsciiRenderResult result)
+    public string BuildAnsiRender(RichAsciiRender render)
     {
-        var sb = new StringBuilder(result.Rows * (result.Columns * 8 + 8));
+        var sb = new StringBuilder(render.Height * (render.Width * 8 + 8));
 
-        for (var y = 0; y < result.Rows; y++)
+        for (var row = 0; row < render.Height; row++)
         {
             var runStart = 0;
-            var runCode  = NearestColor(result.Colors[y][0].R, result.Colors[y][0].G, result.Colors[y][0].B).ForegroundCode;
+            var firstFg  = render.Cells[row][0].Foreground;
+            var runCode  = NearestColor(firstFg.R, firstFg.G, firstFg.B).ForegroundCode;
 
-            for (var x = 1; x <= result.Columns; x++)
+            for (var col = 1; col <= render.Width; col++)
             {
                 int nextCode;
-                if (x < result.Columns)
+                if (col < render.Width)
                 {
-                    var c = result.Colors[y][x];
-                    nextCode = NearestColor(c.R, c.G, c.B).ForegroundCode;
+                    var fg = render.Cells[row][col].Foreground;
+                    nextCode = NearestColor(fg.R, fg.G, fg.B).ForegroundCode;
                 }
                 else
                 {
@@ -71,8 +72,9 @@ public sealed class AnsiColorService
                 if (nextCode != runCode)
                 {
                     sb.Append($"\x1b[{runCode}m");
-                    sb.Append(result.Chars[y], runStart, x - runStart);
-                    runStart = x;
+                    for (var k = runStart; k < col; k++)
+                        sb.Append(render.Cells[row][k].Character);
+                    runStart = col;
                     runCode  = nextCode;
                 }
             }
@@ -80,6 +82,18 @@ public sealed class AnsiColorService
             sb.Append("\x1b[0m\n");
         }
 
+        return sb.ToString();
+    }
+
+    public string BuildMonochromeAnsiRender(RichAsciiRender render)
+    {
+        var sb = new StringBuilder(render.Height * (render.Width + 1));
+        for (var row = 0; row < render.Height; row++)
+        {
+            for (var col = 0; col < render.Width; col++)
+                sb.Append(render.Cells[row][col].Character);
+            sb.Append('\n');
+        }
         return sb.ToString();
     }
 }

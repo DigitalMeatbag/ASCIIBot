@@ -12,6 +12,14 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.7" />
     <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.7" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
+    <PackageReference Include="SixLabors.ImageSharp.Drawing" Version="2.1.6" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\CascadiaMono-Regular.ttf" />
+    <Content Include="Assets\CascadiaMono-OFL.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
 </Project>
