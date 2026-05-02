@@ -16,7 +16,9 @@
       "Bash(Select-Object FullName)",
       "Read(//tmp/**)",
       "Bash(dir \"C:\\\\Users\\\\Anthony Vargo\\\\AppData\\\\Local\\\\Temp\\\\ASCIIBotSpike\")",
-      "Bash(cat)"
+      "Bash(cat)",
+      "Bash(ls *.md)",
+      "Bash(ls docs/)"
     ]
   }
 }

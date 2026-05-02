@@ -1,6 +1,6 @@
 # ASCIIBot
 
-A Discord bot that converts static images to ASCII art via slash command.
+A Discord bot that converts images to ASCII art via slash command. Supports static images and animated GIF/WebP inputs.
 
 ## Usage
 
@@ -20,6 +20,8 @@ All responses are public in-channel. The bot acknowledges accepted requests imme
 
 ## Output
 
+### Static images
+
 Small renders fit inline as a Discord `ansi` code block. Larger renders are delivered as a PNG image and plain `.txt` attachment. If neither fits within delivery limits, the request is rejected with an explanation.
 
 | Size | Columns | Max rows |
@@ -28,9 +30,38 @@ Small renders fit inline as a Discord `ansi` code block. Larger renders are deli
 | `medium` | 72 | 26 |
 | `large` | 100 | 35 |
 
+### Animated images
+
+Animated inputs produce an animated WebP attachment. Routing is automatic — no animation-specific options are required. The original image is attached when `show_original=true` and delivery limits allow it.
+
+Animation limits:
+
+| Limit | Default |
+|-------|---------|
+| Max source duration | 12 seconds |
+| Max source frames | 1,000 |
+| Max output frames | 48 |
+| Min output frame delay | 100 ms |
+| Max animated WebP size | 8 MiB |
+| Max total output cells | 300,000 |
+
+Animations exceeding any limit are rejected with an explanation. There is no automatic fallback to static rendering for animated inputs.
+
 ## Supported Formats
 
-PNG, JPEG, BMP, static GIF, static WebP. Animated images are rejected. Source files above 10 MiB or decoded dimensions above 4096×4096 are rejected.
+| Format | Support |
+|--------|---------|
+| PNG | Static |
+| JPEG | Static |
+| BMP | Static |
+| GIF, single-frame | Static |
+| GIF, animated | Animated |
+| WebP, static | Static |
+| WebP, animated | Animated |
+| APNG | Rejected |
+| MP4, MOV, WebM, AVIF, TIFF, SVG | Rejected |
+
+Source files above 10 MiB or decoded canvas dimensions above 4096×4096 are rejected.
 
 ## Setup
 
@@ -43,18 +74,35 @@ PNG, JPEG, BMP, static GIF, static WebP. Animated images are rejected. Source fi
 
 All configuration is via environment variables:
 
+**Common**
+
 | Variable | Required | Default | Description |
-|----------|:--------:|---------|-------------|
+|----------|:--------:|--------:|-------------|
 | `ASCIIBot_DiscordToken` | yes | — | Discord bot token |
 | `ASCIIBot_MaxGlobalJobs` | no | `3` | Max concurrent jobs across all users |
 | `ASCIIBot_MaxJobsPerUser` | no | `1` | Max concurrent jobs per user |
 | `ASCIIBot_LogLevel` | no | `Information` | Log level (`Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical`) |
+| `ASCIIBot_SourceImageByteLimit` | no | `10485760` | Max downloaded source image size in bytes (10 MiB) |
+| `ASCIIBot_MaxDecodedImageWidth` | no | `4096` | Max decoded canvas width in pixels |
+| `ASCIIBot_MaxDecodedImageHeight` | no | `4096` | Max decoded canvas height in pixels |
 | `ASCIIBot_AttachmentByteLimit` | no | `1000000` | Max `.txt` attachment size in bytes |
 | `ASCIIBot_InlineCharacterLimit` | no | `2000` | Max inline message characters including formatting |
-| `ASCIIBot_RenderPngByteLimit` | no | `8388608` | Max rendered PNG size in bytes |
-| `ASCIIBot_TotalUploadByteLimit` | no | `12582912` | Max total upload size per response in bytes |
+| `ASCIIBot_RenderPngByteLimit` | no | `8388608` | Max rendered PNG size in bytes (8 MiB) |
 | `ASCIIBot_RenderPngMaxWidth` | no | `4096` | Max rendered PNG width in pixels |
 | `ASCIIBot_RenderPngMaxHeight` | no | `4096` | Max rendered PNG height in pixels |
+| `ASCIIBot_TotalUploadByteLimit` | no | `10000000` | Max total bytes for all files in one completion response |
+
+**Animation**
+
+| Variable | Required | Default | Description |
+|----------|:--------:|--------:|-------------|
+| `ASCIIBot_AnimationMaxDurationMs` | no | `12000` | Max accepted source animation duration in milliseconds |
+| `ASCIIBot_AnimationMaxSourceFrames` | no | `1000` | Max accepted source frame count |
+| `ASCIIBot_AnimationMaxOutputFrames` | no | `48` | Max sampled output frames |
+| `ASCIIBot_AnimationTargetSampleIntervalMs` | no | `100` | Target interval used to derive output frame count |
+| `ASCIIBot_AnimationMinFrameDelayMs` | no | `100` | Minimum emitted output frame delay in milliseconds |
+| `ASCIIBot_AnimationWebPByteLimit` | no | `8388608` | Max generated animated WebP size in bytes (8 MiB) |
+| `ASCIIBot_AnimationMaxOutputCells` | no | `300000` | Max `cols × rows × frames` cost fuse |
 
 ### Running
 
@@ -102,7 +150,7 @@ dotnet build ASCIIBot.slnx
 dotnet test ASCIIBot.slnx
 ```
 
-116 unit tests covering rendering, color mapping, delivery decisions, image validation, and concurrency.
+217 unit tests covering rendering, color mapping, delivery decisions, image validation, animation inspection, sampling, rendering, WebP export, and concurrency.
 
 ## Stack
 

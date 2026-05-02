@@ -38,6 +38,13 @@ secrets.json
 .env
 .env.*
 
+# Docker — commit Dockerfile and docker-compose.yml; ignore local overrides
+docker-compose.override.yml
+
+# Logs
+*.log
+logs/
+
 # OS
 Thumbs.db
 .DS_Store
