@@ -48,7 +48,7 @@ All configuration is via environment variables:
 | `ASCIIBot_MaxJobsPerUser` | no | `1` | Max concurrent jobs per user |
 | `ASCIIBot_LogLevel` | no | `Information` | Log level (`Trace`, `Debug`, `Information`, `Warning`, `Error`, `Critical`) |
 | `ASCIIBot_AttachmentByteLimit` | no | `1000000` | Max `.txt` attachment size in bytes |
-| `ASCIIBot_InlineCharacterLimit` | no | `1500` | Max inline message characters including formatting |
+| `ASCIIBot_InlineCharacterLimit` | no | `2000` | Max inline message characters including formatting |
 
 ### Running
 
