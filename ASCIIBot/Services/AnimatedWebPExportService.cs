@@ -77,8 +77,8 @@ public sealed class AnimatedWebPExportService
                 SetWebPFrameDelay(mainImage.Frames[i], render.Frames[i].Duration);
             }
 
-            // Infinite looping
-            mainImage.Metadata.GetWebpMetadata().RepeatCount = 0;
+            mainImage.Metadata.GetWebpMetadata().RepeatCount =
+                (ushort)Math.Clamp(render.LoopCount, 0, ushort.MaxValue);
 
             return mainImage;
         }

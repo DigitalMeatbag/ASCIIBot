@@ -101,7 +101,7 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
 
         try
         {
-            await ProcessRequestAsync(image, size, color, detail, showOriginal, userId, handle);
+            await ProcessRequestAsync(image, size, color, detail, showOriginal, userId);
         }
         finally
         {
@@ -112,16 +112,13 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
     }
 
     private async Task ProcessRequestAsync(
-        IAttachment       image,
-        string            size,
-        string            color,
-        string            detail,
-        bool              showOriginal,
-        ulong             userId,
-        ConcurrencyHandle handle)
+        IAttachment image,
+        string      size,
+        string      color,
+        string      detail,
+        bool        showOriginal,
+        ulong       userId)
     {
-        _ = handle;
-
         MemoryStream imageStream;
         try
         {

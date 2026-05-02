@@ -70,10 +70,6 @@ public sealed class ImageValidationService
         {
             image = await Image.LoadAsync<Rgba32>(imageStream);
         }
-        catch (UnknownImageFormatException)
-        {
-            return Error("The submitted image could not be decoded. Processing has been rejected.");
-        }
         catch
         {
             return Error("The submitted image could not be decoded. Processing has been rejected.");

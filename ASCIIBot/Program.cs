@@ -17,7 +17,7 @@ var host = Host.CreateDefaultBuilder(args)
     {
         services.Configure<BotOptions>(ctx.Configuration);
 
-        services.AddHttpClient("images");
+        services.AddHttpClient("images", c => c.Timeout = TimeSpan.FromSeconds(15));
 
         var socketConfig = new DiscordSocketConfig
         {
