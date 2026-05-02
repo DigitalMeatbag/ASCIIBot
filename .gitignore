@@ -1,0 +1,44 @@
+# Build output
+bin/
+obj/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Rider
+.idea/
+*.sln.iml
+
+# Test results and coverage
+TestResults/
+*.coverage
+*.coveragexml
+*.cobertura.xml
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+!**/[Pp]ackages/build/
+project.lock.json
+artifacts/
+
+# Publish output
+publish/
+
+# Runtime secrets — keep appsettings.json (defaults), ignore environment overrides
+appsettings.Production.json
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
+.env
+.env.*
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
