@@ -26,13 +26,15 @@ v1 must not introduce unrelated image editing, moderation, persistence, analytic
 | Concern | Decision |
 |---|---|
 | Runtime | .NET 10 |
-| Process model | Long-lived console application |
+| Process model | Long-lived console application using Microsoft.Extensions.Hosting |
 | Discord library | Discord.Net |
 | Image library | SixLabors.ImageSharp |
 | Deployment posture | Local-first and Docker-friendly |
 | Persistence | None required for v1 |
 
-The process should start, connect to Discord, register the slash command globally, and remain running until terminated.
+The process should start through the .NET generic host, connect to Discord, register the slash command globally, and remain running until terminated.
+
+The implementation should use `Microsoft.Extensions.Hosting`, dependency injection, `IOptions<T>` or equivalent options binding, and `ILogger<T>` for structured console logging. Manual wiring is acceptable only for narrow leaf objects where DI would add noise.
 
 ---
 
@@ -122,7 +124,8 @@ Implementation requirement:
 
 - Use Discord's deferred interaction response mechanism.
 - The deferred response must be public.
-- The initial visible wording should be terse and procedural.
+- Send a public follow-up acknowledgement immediately after deferral.
+- The visible wording should be terse and procedural.
 
 Preferred acknowledgement text:
 
@@ -130,17 +133,17 @@ Preferred acknowledgement text:
 Request received. Processing has begun.
 ```
 
-Implementation should verify Discord.Net's deferred-response behavior during the first integration pass. If a deferred response does not display the acknowledgement text publicly, v1 must use a public follow-up message immediately after deferral. This is an observation-based implementation decision, but the product requirement is fixed: the user must see a public acknowledgement before conversion completes.
+Discord.Net's deferred response is expected to show a loading state rather than custom acknowledgement text. v1 should therefore defer publicly, then immediately send the public acknowledgement follow-up. The product requirement is fixed: the user must see a public acknowledgement before conversion completes.
 
 ### 5.3 Long-Running Work
 
-If processing takes more than 10 seconds after acknowledgement, the bot should send or edit a public status message:
+If processing takes more than 10 seconds after acknowledgement, the bot should edit the public acknowledgement follow-up when possible:
 
 ```text
 Processing remains active.
 ```
 
-Only one long-running status notice is required for v1.
+Only one long-running status notice is required for v1. If editing the acknowledgement is not possible, the bot may send one additional public status message instead.
 
 ---
 
@@ -160,7 +163,7 @@ Supported static formats:
 
 Validation must be based on file contents, not filename extension alone.
 
-Animated WebP detection should use ImageSharp metadata/frame inspection where available. If the implementation cannot confidently determine whether a WebP is static, v1 should reject the input conservatively rather than risk silently accepting animation.
+Animated WebP detection should use ImageSharp metadata/frame inspection where available. If a WebP exposes more than one frame, reject it as animated. If frame count or equivalent static-image confidence cannot be read for a WebP, reject the input conservatively rather than risk silently accepting animation.
 
 ### 6.2 Rejected Inputs
 
@@ -457,6 +460,13 @@ The bot token and image binary content must never be logged.
 ## 13. Suggested Internal Structure
 
 The implementation should keep Discord interaction concerns separate from image conversion concerns.
+
+v1 should use a multi-project solution:
+
+| Project | Purpose |
+|---|---|
+| `ASCIIBot` | Console-hosted Discord bot implementation |
+| `ASCIIBot.Tests` | Automated tests for rendering, validation, output decisions, and concurrency behavior |
 
 Suggested components:
 

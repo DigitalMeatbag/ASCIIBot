@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ASCIIBot.Tests/ASCIIBot.Tests.csproj" />
+  <Project Path="ASCIIBot/ASCIIBot.csproj" />
+</Solution>
