@@ -7,76 +7,206 @@ namespace ASCIIBot.Services;
 
 public sealed class OutputDeliveryService
 {
-    private readonly BotOptions _options;
-    private readonly AnsiColorService _ansi;
+    private readonly BotOptions           _options;
+    private readonly AnsiColorService     _ansi;
+    private readonly PlainTextExportService _plainText;
+    private readonly PngRenderService     _png;
     private readonly ILogger<OutputDeliveryService> _logger;
 
+    private const string CompletionTextInline    = "Rendering complete.";
+    private const string CompletionTextNonInline = "Rendering complete. Output has been attached.";
+    internal const string OmissionNote           = "Original image display was omitted due to delivery limits.";
+
     public OutputDeliveryService(
-        IOptions<BotOptions> options,
-        AnsiColorService ansi,
+        IOptions<BotOptions>    options,
+        AnsiColorService        ansi,
+        PlainTextExportService  plainText,
+        PngRenderService        png,
         ILogger<OutputDeliveryService> logger)
     {
-        _options = options.Value;
-        _ansi    = ansi;
-        _logger  = logger;
+        _options   = options.Value;
+        _ansi      = ansi;
+        _plainText = plainText;
+        _png       = png;
+        _logger    = logger;
     }
 
-    public DeliveryResult Decide(AsciiRenderResult render, bool colorEnabled)
+    public DeliveryResult Decide(
+        RichAsciiRender render,
+        bool            colorEnabled,
+        bool            showOriginal,
+        RenderFile? originalImage)
     {
-        // Step 1: visible dimension check
-        if (render.Columns > 100 || render.Rows > 35)
-        {
-            _logger.LogDebug("Render exceeds visible thresholds ({Cols}x{Rows}), using attachment", render.Columns, render.Rows);
-            return AttachmentOrRejected(render);
-        }
+        // Step 1-2: plain text
+        var plainText      = _plainText.Export(render);
+        var plainTextBytes = Encoding.UTF8.GetBytes(plainText);
 
-        // Step 2/3/4: inline payload check
-        string inlinePayload;
-        if (colorEnabled)
+        // Step 3: inline dimension eligibility
+        bool dimensionEligible = render.Width <= 100 && render.Height <= 35;
+
+        if (dimensionEligible)
         {
-            var ansiText    = _ansi.BuildAnsiRender(render);
-            inlinePayload   = BuildInlineMessage(ansiText);
+            var inlineResult = TryInline(render, colorEnabled, showOriginal, originalImage, plainText);
+            if (inlineResult is not null)
+            {
+                _logger.LogDebug("Delivering inline ({Cols}x{Rows})", render.Width, render.Height);
+                return inlineResult;
+            }
         }
         else
         {
-            var plainText   = AsciiRenderService.ToPlainText(render);
-            inlinePayload   = BuildInlineMessage(plainText);
+            _logger.LogDebug("Render exceeds inline dimension gate ({Cols}x{Rows}), using non-inline", render.Width, render.Height);
         }
 
-        if (inlinePayload.Length <= _options.InlineCharacterLimit)
-        {
-            _logger.LogDebug("Delivering inline ({Chars} chars)", inlinePayload.Length);
-            return new DeliveryResult.Inline { Message = inlinePayload };
-        }
-
-        // Inline too large — fall through to attachment
-        _logger.LogDebug("Inline payload too large ({Chars} chars), using attachment", inlinePayload.Length);
-        return AttachmentOrRejected(render);
+        return BuildNonInline(render, colorEnabled, showOriginal, originalImage, plainTextBytes);
     }
 
-    private DeliveryResult AttachmentOrRejected(AsciiRenderResult render)
+    private DeliveryResult.Inline? TryInline(
+        RichAsciiRender render,
+        bool            colorEnabled,
+        bool            showOriginal,
+        RenderFile? originalImage,
+        string          plainText)
     {
-        var plainText = AsciiRenderService.ToPlainText(render);
-        var bytes     = Encoding.UTF8.GetBytes(plainText);
-
-        if (bytes.Length > _options.AttachmentByteLimit)
+        string inlinePayload;
+        try
         {
-            _logger.LogDebug("Attachment too large ({Bytes} bytes), rejecting", bytes.Length);
-            return new DeliveryResult.Rejected
+            inlinePayload = colorEnabled
+                ? _ansi.BuildAnsiRender(render)
+                : _ansi.BuildMonochromeAnsiRender(render);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "ANSI export failed; falling through to non-inline path");
+            return null;
+        }
+
+        string fence = $"\n```ansi\n{inlinePayload}\n```";
+
+        // Try with original image
+        if (showOriginal && originalImage is not null)
+        {
+            string completionText  = CompletionTextInline;
+            int    charCount       = CountInlineChars(completionText, fence);
+            if (charCount <= _options.InlineCharacterLimit &&
+                originalImage.Content.LongLength <= _options.TotalUploadByteLimit)
             {
-                Message = "The rendered output exceeds delivery limits. Processing has been rejected.",
+                return new DeliveryResult.Inline
+                {
+                    CompletionText = completionText,
+                    InlinePayload  = fence,
+                    OriginalImage  = originalImage,
+                };
+            }
+
+            // Original image doesn't fit — try with omission note
+            string completionWithNote = CompletionTextInline + "\n" + OmissionNote;
+            int    charCountWithNote  = CountInlineChars(completionWithNote, fence);
+            if (charCountWithNote <= _options.InlineCharacterLimit)
+            {
+                return new DeliveryResult.Inline
+                {
+                    CompletionText = completionWithNote,
+                    InlinePayload  = fence,
+                    OriginalImage  = null,
+                };
+            }
+
+            // Even with the omission note it doesn't fit — fall through
+            return null;
+        }
+        else
+        {
+            string completionText = CompletionTextInline;
+            int    charCount      = CountInlineChars(completionText, fence);
+            if (charCount <= _options.InlineCharacterLimit)
+            {
+                return new DeliveryResult.Inline
+                {
+                    CompletionText = completionText,
+                    InlinePayload  = fence,
+                    OriginalImage  = null,
+                };
+            }
+            return null;
+        }
+    }
+
+    private DeliveryResult BuildNonInline(
+        RichAsciiRender render,
+        bool            colorEnabled,
+        bool            showOriginal,
+        RenderFile? originalImage,
+        byte[]          plainTextBytes)
+    {
+        // Check txt attachment byte limit
+        if (plainTextBytes.Length > _options.AttachmentByteLimit)
+        {
+            _logger.LogDebug("Plain text too large ({Bytes} bytes), rejecting", plainTextBytes.Length);
+            return Rejected("The rendered output exceeds delivery limits. Processing has been rejected.");
+        }
+
+        // Generate PNG
+        var pngBytes = _png.TryRenderPng(render, colorEnabled);
+        if (pngBytes is null)
+        {
+            _logger.LogDebug("PNG generation failed or exceeded limits, rejecting");
+            return Rejected("The rendered output exceeds delivery limits. Processing has been rejected.");
+        }
+
+        var pngAttachment = new RenderFile { Content = pngBytes,       Filename = "asciibot-render.png" };
+        var txtAttachment = new RenderFile { Content = plainTextBytes,  Filename = "asciibot-render.txt" };
+
+        long renderBundleSize = (long)pngBytes.Length + plainTextBytes.Length;
+
+        // Can the render bundle fit in the total upload budget?
+        if (renderBundleSize > _options.TotalUploadByteLimit)
+        {
+            _logger.LogDebug("Render bundle ({Bytes} bytes) exceeds total upload limit, rejecting", renderBundleSize);
+            return Rejected("The rendered output exceeds delivery limits. Processing has been rejected.");
+        }
+
+        // Try to include original image
+        if (showOriginal && originalImage is not null)
+        {
+            long withOriginal = renderBundleSize + originalImage.Content.LongLength;
+            if (withOriginal <= _options.TotalUploadByteLimit)
+            {
+                _logger.LogDebug("Delivering non-inline with original image ({TotalBytes} bytes)", withOriginal);
+                return new DeliveryResult.NonInline
+                {
+                    CompletionText = CompletionTextNonInline,
+                    PngRender      = pngAttachment,
+                    TxtRender      = txtAttachment,
+                    OriginalImage  = originalImage,
+                };
+            }
+
+            // Original doesn't fit — omit with note
+            _logger.LogDebug("Original image omitted due to delivery limits");
+            return new DeliveryResult.NonInline
+            {
+                CompletionText = CompletionTextNonInline + "\n" + OmissionNote,
+                PngRender      = pngAttachment,
+                TxtRender      = txtAttachment,
+                OriginalImage  = null,
             };
         }
 
-        _logger.LogDebug("Delivering as attachment ({Bytes} bytes)", bytes.Length);
-        return new DeliveryResult.Attachment
+        _logger.LogDebug("Delivering non-inline ({TotalBytes} bytes)", renderBundleSize);
+        return new DeliveryResult.NonInline
         {
-            Message  = "Rendering complete. Output has been attached as text.",
-            Content  = bytes,
-            Filename = "ascii.txt",
+            CompletionText = CompletionTextNonInline,
+            PngRender      = pngAttachment,
+            TxtRender      = txtAttachment,
+            OriginalImage  = null,
         };
     }
 
-    private static string BuildInlineMessage(string renderContent) =>
-        $"Rendering complete.\n```ansi\n{renderContent}\n```";
+    // Canonical inline character count per spec §11.2
+    private static int CountInlineChars(string completionText, string fence) =>
+        completionText.Length + fence.Length;
+
+    private static DeliveryResult.Rejected Rejected(string message) =>
+        new() { Message = message };
 }

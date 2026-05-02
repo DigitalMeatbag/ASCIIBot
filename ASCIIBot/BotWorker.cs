@@ -12,21 +12,21 @@ namespace ASCIIBot;
 internal sealed class BotWorker : BackgroundService
 {
     private readonly DiscordSocketClient _client;
-    private readonly InteractionService _interactions;
-    private readonly BotOptions _options;
-    private readonly IConfiguration _config;
+    private readonly InteractionService  _interactions;
+    private readonly BotOptions          _options;
+    private readonly IConfiguration      _config;
     private readonly IHostApplicationLifetime _lifetime;
-    private readonly ILogger<BotWorker> _logger;
-    private readonly IServiceProvider _services;
+    private readonly ILogger<BotWorker>  _logger;
+    private readonly IServiceProvider    _services;
 
     public BotWorker(
-        DiscordSocketClient client,
-        InteractionService interactions,
-        IOptions<BotOptions> options,
-        IConfiguration config,
+        DiscordSocketClient      client,
+        InteractionService       interactions,
+        IOptions<BotOptions>     options,
+        IConfiguration           config,
         IHostApplicationLifetime lifetime,
-        ILogger<BotWorker> logger,
-        IServiceProvider services)
+        ILogger<BotWorker>       logger,
+        IServiceProvider         services)
     {
         _client       = client;
         _interactions = interactions;
@@ -45,8 +45,8 @@ internal sealed class BotWorker : BackgroundService
             return;
         }
 
-        _client.Log             += OnLog;
-        _client.Ready           += OnReady;
+        _client.Log                += OnLog;
+        _client.Ready              += OnReady;
         _client.InteractionCreated += OnInteractionCreated;
 
         await _interactions.AddModulesAsync(Assembly.GetExecutingAssembly(), _services);
@@ -56,7 +56,6 @@ internal sealed class BotWorker : BackgroundService
 
         _logger.LogInformation("ASCIIBot started.");
 
-        // Block until host is stopping
         await Task.Delay(Timeout.Infinite, stoppingToken).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
 
         await _client.StopAsync();
@@ -77,6 +76,10 @@ internal sealed class BotWorker : BackgroundService
         valid &= ValidateIntOption("MaxJobsPerUser",       _options.MaxJobsPerUser);
         valid &= ValidateIntOption("AttachmentByteLimit",  _options.AttachmentByteLimit);
         valid &= ValidateIntOption("InlineCharacterLimit", _options.InlineCharacterLimit);
+        valid &= ValidateIntOption("RenderPngByteLimit",   _options.RenderPngByteLimit);
+        valid &= ValidateLongOption("TotalUploadByteLimit", _options.TotalUploadByteLimit);
+        valid &= ValidateIntOption("RenderPngMaxWidth",    _options.RenderPngMaxWidth);
+        valid &= ValidateIntOption("RenderPngMaxHeight",   _options.RenderPngMaxHeight);
 
         return valid;
     }
@@ -84,21 +87,32 @@ internal sealed class BotWorker : BackgroundService
     private bool ValidateIntOption(string key, int boundValue)
     {
         var raw = _config[key];
-
-        // If a value was explicitly provided but cannot be parsed as int, the binder
-        // silently keeps the default. Detect this by checking the raw string.
         if (raw is not null && !int.TryParse(raw, out _))
         {
             _logger.LogError("ASCIIBot_{Key} has an invalid value '{Raw}' (must be a positive integer).", key, raw);
             return false;
         }
-
         if (boundValue <= 0)
         {
             _logger.LogError("ASCIIBot_{Key} must be greater than 0 (got {Value}).", key, boundValue);
             return false;
         }
+        return true;
+    }
 
+    private bool ValidateLongOption(string key, long boundValue)
+    {
+        var raw = _config[key];
+        if (raw is not null && !long.TryParse(raw, out _))
+        {
+            _logger.LogError("ASCIIBot_{Key} has an invalid value '{Raw}' (must be a positive integer).", key, raw);
+            return false;
+        }
+        if (boundValue <= 0)
+        {
+            _logger.LogError("ASCIIBot_{Key} must be greater than 0 (got {Value}).", key, boundValue);
+            return false;
+        }
         return true;
     }
 
@@ -141,7 +155,6 @@ internal sealed class BotWorker : BackgroundService
             _                    => Microsoft.Extensions.Logging.LogLevel.Information,
         };
 
-        // Never log the token — log the message source and text only
         _logger.Log(level, "[Discord.Net/{Source}] {Message}", msg.Source, msg.Message ?? msg.Exception?.Message);
         return Task.CompletedTask;
     }

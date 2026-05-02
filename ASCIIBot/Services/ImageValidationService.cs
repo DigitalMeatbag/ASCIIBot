@@ -24,6 +24,20 @@ public sealed class ImageValidationService
 
     public async Task<ValidationResult> ValidateAsync(Stream imageStream)
     {
+        // Capture original bytes for reattach before any decoding
+        byte[] originalBytes;
+        if (imageStream is MemoryStream ms && ms.TryGetBuffer(out var seg))
+        {
+            originalBytes = seg.Array![seg.Offset..(seg.Offset + seg.Count)];
+        }
+        else
+        {
+            using var capture = new MemoryStream();
+            await imageStream.CopyToAsync(capture);
+            originalBytes = capture.ToArray();
+            imageStream   = new MemoryStream(originalBytes);
+        }
+
         // Step 1: Content-based format detection
         IImageFormat? format;
         try
@@ -77,7 +91,6 @@ public sealed class ImageValidationService
             }
             catch
             {
-                // Cannot determine frame count — reject conservatively
                 image.Dispose();
                 return Error("Animated images are not supported in this version. Processing has been rejected.");
             }
@@ -93,7 +106,12 @@ public sealed class ImageValidationService
         _logger.LogDebug("Validated image: {Format} {Width}x{Height} frames={Frames}",
             format.Name, image.Width, image.Height, image.Frames.Count);
 
-        return new ValidationResult.Ok { Image = image };
+        return new ValidationResult.Ok
+        {
+            Image         = image,
+            OriginalBytes = originalBytes,
+            Format        = format,
+        };
     }
 
     private static ValidationResult.Error Error(string message) =>

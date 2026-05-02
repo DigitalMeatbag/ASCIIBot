@@ -36,6 +36,8 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddSingleton<ImageValidationService>();
         services.AddSingleton<AsciiRenderService>();
         services.AddSingleton<AnsiColorService>();
+        services.AddSingleton<PlainTextExportService>();
+        services.AddSingleton<PngRenderService>();
         services.AddSingleton<OutputDeliveryService>();
 
         services.AddHostedService<BotWorker>();

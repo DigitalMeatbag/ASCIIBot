@@ -96,6 +96,35 @@ public sealed class ImageValidationServiceTests
         ((ValidationResult.Ok)result).Image.Dispose();
     }
 
+    // --- v2: original bytes and format retention ---
+
+    [Fact]
+    public async Task ValidateAsync_ValidPng_RetainsOriginalBytes()
+    {
+        var svc    = MakeService();
+        using var stream = CreatePng(2, 2);
+        var expected = stream.ToArray();
+        stream.Position = 0;
+
+        var result = await svc.ValidateAsync(stream);
+        var ok = Assert.IsType<ValidationResult.Ok>(result);
+        ok.Image.Dispose();
+
+        Assert.Equal(expected, ok.OriginalBytes);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_ValidPng_RetainsPngFormat()
+    {
+        var svc    = MakeService();
+        using var stream = CreatePng(1, 1);
+        var result = await svc.ValidateAsync(stream);
+        var ok = Assert.IsType<ValidationResult.Ok>(result);
+        ok.Image.Dispose();
+
+        Assert.IsType<PngFormat>(ok.Format);
+    }
+
     // --- Helpers ---
 
     private static MemoryStream CreatePng(int width, int height)

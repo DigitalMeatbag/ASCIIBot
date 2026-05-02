@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("ASCIIBot")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+84bfc691c50e223c46716792bc8f533ae8e059d3")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+9704d343a46de7bb15295c3f346e2526f35a9013")]
 [assembly: System.Reflection.AssemblyProductAttribute("ASCIIBot")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ASCIIBot")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

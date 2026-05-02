@@ -140,3 +140,7 @@ C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot.Tests\obj\Debug\net10.0\refint\ASC
 C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot.Tests\obj\Debug\net10.0\ASCIIBot.Tests.pdb
 C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot.Tests\obj\Debug\net10.0\ASCIIBot.Tests.genruntimeconfig.cache
 C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot.Tests\obj\Debug\net10.0\ref\ASCIIBot.Tests.dll
+C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot.Tests\bin\Debug\net10.0\SixLabors.Fonts.dll
+C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot.Tests\bin\Debug\net10.0\SixLabors.ImageSharp.Drawing.dll
+C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot.Tests\obj\Debug\net10.0\ASCIIBot.Tests.sourcelink.json
+C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot.Tests\bin\Debug\net10.0\Assets\CascadiaMono-OFL.txt

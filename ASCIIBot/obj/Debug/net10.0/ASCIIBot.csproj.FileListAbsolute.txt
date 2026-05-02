@@ -55,3 +55,6 @@ C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot\obj\Debug\net10.0\ASCIIBot.pdb
 C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot\obj\Debug\net10.0\ASCIIBot.genruntimeconfig.cache
 C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot\obj\Debug\net10.0\ref\ASCIIBot.dll
 C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot\obj\Debug\net10.0\ASCIIBot.sourcelink.json
+C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot\bin\Debug\net10.0\SixLabors.Fonts.dll
+C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot\bin\Debug\net10.0\SixLabors.ImageSharp.Drawing.dll
+C:\Users\Anthony Vargo\Code\ASCIIBot\ASCIIBot\bin\Debug\net10.0\Assets\CascadiaMono-OFL.txt
