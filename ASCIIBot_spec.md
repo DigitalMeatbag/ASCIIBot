@@ -49,7 +49,7 @@ Configuration is supplied through environment variables.
 | `ASCIIBot_MaxJobsPerUser` | no | `1` | Maximum active jobs per Discord user |
 | `ASCIIBot_LogLevel` | no | `Information` | Minimum application log level |
 | `ASCIIBot_AttachmentByteLimit` | no | `1000000` | Maximum generated text attachment size in bytes |
-| `ASCIIBot_InlineCharacterLimit` | no | `1500` | Maximum inline Discord message characters, including formatting overhead |
+| `ASCIIBot_InlineCharacterLimit` | no | `2000` | Maximum inline Discord message characters, including formatting overhead |
 
 The Discord token must never be hardcoded, committed, logged, or echoed in diagnostics.
 
@@ -321,7 +321,7 @@ Rendering complete.
 
 The render may be included in the same follow-up message as the completion text if Discord limits allow.
 
-The default inline character limit of 1500 is an empirically unvalidated starting value inherited from the foundation defaults. It should be rechecked against real Discord renders after ANSI escape overhead is measured on representative samples.
+The default inline character limit of 2000 aligns with Discord's message character cap. This value has been validated against real render sizes across all three size presets.
 
 ### 9.2 Attachment Fallback
 

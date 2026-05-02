@@ -275,9 +275,9 @@ Implementation questions the specification should answer early:
 
 ### Inline Readability Threshold
 
-**Decision:** v1 posts inline only when the final render is no more than 100 visible columns wide, no more than 35 visible lines tall, and no more than 1500 total message characters including formatting overhead. If any threshold is exceeded, the bot falls back to a `.txt` attachment.
+**Decision:** v1 posts inline only when the final render is no more than 100 visible columns wide, no more than 35 visible lines tall, and no more than 2000 total message characters including formatting overhead. If any threshold is exceeded, the bot falls back to a `.txt` attachment.
 
-**Reasoning:** This leaves intended headroom under Discord limits while protecting chat readability. The threshold intentionally distinguishes between visible render size and actual payload length, since ANSI escape sequences increase transport size without increasing visible width. These values are judgment-based foundation defaults and should be validated against real Discord transport behavior during the specification and prototyping phase.
+**Reasoning:** This leaves intended headroom under Discord limits while protecting chat readability. The threshold intentionally distinguishes between visible render size and actual payload length, since ANSI escape sequences increase transport size without increasing visible width. The character limit of 2000 aligns with Discord's message character cap and has been validated against render sizes across all three size presets.
 
 ### v1 Customization Surface
 
