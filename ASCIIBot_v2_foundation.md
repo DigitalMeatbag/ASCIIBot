@@ -64,13 +64,13 @@ Attached ANSI files are not a sufficient primary answer because Discord does not
 
 The preferred v2 answer is to render large colored output as an image attachment, likely PNG, while still attaching the plain `.txt` render for copyability.
 
-Recommended delivery order:
+Recommended delivery tendency:
 
 | Output size | Primary delivery | Secondary delivery |
 |---|---|---|
 | Small | Inline Discord `ansi` code block when color is enabled | None required |
 | Medium | Inline if it fits comfortably; otherwise image attachment | Plain `.txt` when not inline |
-| Large | Full-color PNG attachment | Plain `.txt` attachment |
+| Large | Inline if it fits; otherwise full-color PNG attachment | Plain `.txt` attachment when not inline |
 | Extremely large | Clear rejection | Plain `.txt` only if a future delivery mode supports it |
 
 This makes PNG the primary full-color fallback for Discord viewing, not a replacement for text output.
