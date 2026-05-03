@@ -129,7 +129,7 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
         try
         {
             // Hardcoded defaults per spec §5.2
-            await ProcessRequestAsync(mediaUrl, reportedSize, "medium", "on", "normal", showOriginal: true, userId);
+            await ProcessRequestAsync(mediaUrl, reportedSize, "large", "on", "high", showOriginal: false, userId);
         }
         finally
         {
