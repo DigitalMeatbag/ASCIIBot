@@ -109,7 +109,7 @@ Likely v4 artifacts:
 
 - `Dockerfile`
 - `.dockerignore`
-- optional `docker-compose.yml` or compose example
+- `docker-compose.yml`
 - README updates for Docker build and run
 
 ### Runtime Image Policy
@@ -463,7 +463,7 @@ Startup decoder unavailability is handled by the selected decoder availability p
 
 ASCIIBot's user-facing language remains formal, precise, affectless, and impersonal.
 
-Candidate MP4-specific messages:
+MP4-specific messages use "video" for inspection and validation failures and "animation" for generated animated WebP delivery failures, consistent with v3 animated delivery language.
 
 | Condition | Public response |
 |---|---|
@@ -477,8 +477,6 @@ Candidate MP4-specific messages:
 | Video decoding failure | `The submitted video could not be rendered. Processing has failed.` |
 | Generated animation too large | `The rendered animation exceeds delivery limits. Processing has been rejected.` |
 | Video delivery failure | `The rendered animation could not be delivered. Processing has failed.` |
-
-The spec should decide whether MP4 messages should say "video" or "animation." Recommended direction: use "video" for MP4 inspection and validation failures, and "animation" for generated animated WebP delivery failures already shared with v3.
 
 ---
 
@@ -509,22 +507,12 @@ v4 supersedes v3 only by adding:
 
 ## Open v4 Idea Queue
 
-Candidate areas:
+Remaining open or deferred items:
 
-- Docker image hardening
-- Docker Compose example
-- container health checks
-- non-root container runtime
-- FFmpeg installation strategy
-- FFmpeg version pinning
-- local non-Docker FFmpeg discovery
+- FFmpeg version pinning (deferred; package manager install accepted for v4 baseline)
 - direct copied-media-link host allowlist (deferred; retained for reference if context command proves insufficient)
-- MP4 source byte limit
-- MP4 temporary file location and cleanup
-- MP4 inspection metadata
-- MP4 sample-frame extraction
-- MP4 test fixtures
-- manual Discord testing for saved built-in GIF MP4 files
+- MP4 test fixtures (implementation concern; resolved during spec/implementation)
+- manual Discord testing for saved built-in GIF MP4 files (testing concern; resolved during acceptance)
 - future WebM support
 - future MOV support
 - future explicit first-frame-only mode
