@@ -49,9 +49,12 @@ public sealed class Mp4InspectionService : IMp4InspectionService
         string stdout;
         try
         {
-            var readTask = process.StandardOutput.ReadToEndAsync(ct);
+            // Drain stdout (JSON result) and stderr concurrently to prevent pipe-buffer deadlock.
+            var readTask   = process.StandardOutput.ReadToEndAsync(ct);
+            var stderrTask = process.StandardError.ReadToEndAsync(ct);
             await process.WaitForExitAsync(ct);
             stdout = await readTask;
+            await stderrTask;
         }
         catch (OperationCanceledException)
         {

@@ -44,6 +44,9 @@ public sealed class Mp4FrameExtractionService : IMp4FrameExtractionService
                     CreateNoWindow         = true,
                 }
             };
+            process.StartInfo.ArgumentList.Add("-nostdin");
+            process.StartInfo.ArgumentList.Add("-loglevel");
+            process.StartInfo.ArgumentList.Add("quiet");
             process.StartInfo.ArgumentList.Add("-ss");
             process.StartInfo.ArgumentList.Add(seekSecs);
             process.StartInfo.ArgumentList.Add("-i");
@@ -65,7 +68,12 @@ public sealed class Mp4FrameExtractionService : IMp4FrameExtractionService
 
             try
             {
+                // Drain stdout and stderr concurrently to prevent pipe-buffer deadlock,
+                // then wait for the process to exit.
+                var stdoutTask = process.StandardOutput.ReadToEndAsync(ct);
+                var stderrTask = process.StandardError.ReadToEndAsync(ct);
                 await process.WaitForExitAsync(ct);
+                await Task.WhenAll(stdoutTask, stderrTask);
             }
             catch (OperationCanceledException)
             {
