@@ -22,6 +22,11 @@ public abstract class ValidationResult
         public required IImageFormat  Format         { get; init; }
     }
 
+    public sealed class Mp4Ok : ValidationResult
+    {
+        public required byte[] OriginalBytes { get; init; }
+    }
+
     public sealed class Error : ValidationResult
     {
         public required string Message { get; init; }

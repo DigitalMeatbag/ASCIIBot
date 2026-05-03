@@ -39,6 +39,13 @@ public sealed class ImageValidationService
             imageStream   = new MemoryStream(originalBytes);
         }
 
+        // MP4 detection via ftyp atom — must run before ImageSharp format detection
+        if (IsMp4ByFtyp(originalBytes))
+        {
+            _logger.LogDebug("MP4 detected via ftyp atom");
+            return new ValidationResult.Mp4Ok { OriginalBytes = originalBytes };
+        }
+
         // Step 1: Content-based format detection
         IImageFormat? format;
         try
@@ -131,6 +138,21 @@ public sealed class ImageValidationService
             OriginalBytes = originalBytes,
             Format        = format,
         };
+    }
+
+    // Detects MP4 by checking for the ISO base media file format 'ftyp' box at the expected position.
+    // The ftyp box begins at byte offset 4 (after the 4-byte box size) with the ASCII bytes 'f','t','y','p'.
+    // We also accept files where ftyp is at offset 0 of the data (i.e., size bytes first, then 'ftyp').
+    private static bool IsMp4ByFtyp(byte[] bytes)
+    {
+        // Minimum: 4 bytes size + 4 bytes type + 4 bytes major brand = 12 bytes
+        if (bytes.Length < 12) return false;
+
+        // The ftyp box type bytes are at offset 4 (after the 4-byte size field)
+        return bytes[4] == 0x66 && // 'f'
+               bytes[5] == 0x74 && // 't'
+               bytes[6] == 0x79 && // 'y'
+               bytes[7] == 0x70;   // 'p'
     }
 
     // Walk PNG chunk structure to detect APNG animation control chunk (acTL).

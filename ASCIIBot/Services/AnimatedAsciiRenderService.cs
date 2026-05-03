@@ -49,4 +49,42 @@ public sealed class AnimatedAsciiRenderService
             Frames    = frames,
         };
     }
+
+    /// <summary>
+    /// Builds an <see cref="AnimatedAsciiRender"/> from pre-extracted frame images (MP4 pipeline).
+    /// Each image in <paramref name="extractedFrames"/> is treated as a fully composited source frame.
+    /// </summary>
+    public AnimatedAsciiRender RenderFromExtractedFrames(
+        IReadOnlyList<SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>> extractedFrames,
+        int          cols,
+        int          rows,
+        TimeSpan[]   sampleTimes,
+        TimeSpan[]   outputDurations,
+        DetailPreset detail,
+        bool         colorEnabled)
+    {
+        int frameCount = extractedFrames.Count;
+        var frames     = new AnimatedAsciiFrame[frameCount];
+
+        for (int i = 0; i < frameCount; i++)
+        {
+            var richRender = _renderer.RenderFrame(extractedFrames[i], cols, rows, detail);
+
+            frames[i] = new AnimatedAsciiFrame
+            {
+                Index      = i,
+                SampleTime = sampleTimes[i],
+                Duration   = outputDurations[i],
+                Render     = richRender,
+            };
+        }
+
+        return new AnimatedAsciiRender
+        {
+            Width     = cols,
+            Height    = rows,
+            LoopCount = 0,
+            Frames    = frames,
+        };
+    }
 }

@@ -43,6 +43,8 @@ var host = Host.CreateDefaultBuilder(args)
         services.AddSingleton<AnimatedAsciiRenderService>();
         services.AddSingleton<AnimatedWebPExportService>();
         services.AddSingleton<OutputDeliveryService>();
+        services.AddSingleton<IMp4InspectionService, Mp4InspectionService>();
+        services.AddSingleton<IMp4FrameExtractionService, Mp4FrameExtractionService>();
 
         services.AddHostedService<BotWorker>();
     })

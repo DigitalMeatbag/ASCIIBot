@@ -9,6 +9,13 @@ public sealed class AnimationSamplingResult
     public required TimeSpan[] SampleTimes                { get; init; }
 }
 
+public sealed class Mp4SamplingResult
+{
+    public required int        FrameCount      { get; init; }
+    public required TimeSpan[] SampleTimes     { get; init; }
+    public required TimeSpan[] OutputDurations { get; init; }
+}
+
 public sealed class AnimationSamplingService
 {
     private readonly BotOptions _options;
@@ -19,8 +26,7 @@ public sealed class AnimationSamplingService
     }
 
     public AnimationSamplingResult Sample(long sourceDurationMs, long[] frameStartTimesMs)
-    {
-        int maxFrames        = _options.AnimationMaxOutputFrames;
+    {        int maxFrames        = _options.AnimationMaxOutputFrames;
         long targetIntervalMs = _options.AnimationTargetSampleIntervalMs;
         int  minDelayMs      = _options.AnimationMinFrameDelayMs;
         int  sourceCount     = frameStartTimesMs.Length;
@@ -98,5 +104,57 @@ public sealed class AnimationSamplingService
         }
 
         return best;
+    }
+
+    /// <summary>
+    /// Computes sampled frame count, sample timestamps, and output durations for MP4 input.
+    /// Unlike <see cref="Sample"/>, this does not perform source-frame index selection —
+    /// timestamps are passed directly to FFmpeg.
+    /// </summary>
+    public Mp4SamplingResult SampleMp4(long sourceDurationMs)
+    {
+        int  maxFrames        = _options.AnimationMaxOutputFrames;
+        long targetIntervalMs = _options.AnimationTargetSampleIntervalMs;
+        int  minDelayMs       = _options.AnimationMinFrameDelayMs;
+
+        int frameCount;
+        if (sourceDurationMs < targetIntervalMs)
+            frameCount = 1;
+        else
+            frameCount = (int)Math.Min(maxFrames, sourceDurationMs / targetIntervalMs);
+        frameCount = Math.Max(1, frameCount);
+
+        long sourceDurationTicks = sourceDurationMs * TimeSpan.TicksPerMillisecond;
+        long[] sampleTicks = new long[frameCount];
+        for (int i = 0; i < frameCount; i++)
+            sampleTicks[i] = (long)i * sourceDurationTicks / frameCount;
+
+        TimeSpan minDelay       = TimeSpan.FromMilliseconds(minDelayMs);
+        TimeSpan[] outputDurations = new TimeSpan[frameCount];
+
+        if (frameCount == 1)
+        {
+            outputDurations[0] = TimeSpan.FromMilliseconds(Math.Max(sourceDurationMs, minDelayMs));
+        }
+        else
+        {
+            for (int i = 0; i < frameCount - 1; i++)
+                outputDurations[i] = TimeSpan.FromTicks(sampleTicks[i + 1] - sampleTicks[i]);
+            outputDurations[frameCount - 1] = outputDurations[frameCount - 2];
+            for (int i = 0; i < frameCount; i++)
+            {
+                if (outputDurations[i] < minDelay)
+                    outputDurations[i] = minDelay;
+            }
+        }
+
+        TimeSpan[] sampleTimes = Array.ConvertAll(sampleTicks, t => TimeSpan.FromTicks(t));
+
+        return new Mp4SamplingResult
+        {
+            FrameCount      = frameCount,
+            SampleTimes     = sampleTimes,
+            OutputDurations = outputDurations,
+        };
     }
 }

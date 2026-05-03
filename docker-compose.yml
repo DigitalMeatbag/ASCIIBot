@@ -1,0 +1,6 @@
+services:
+  asciibot:
+    build: .
+    environment:
+      - ASCIIBot_Token=${ASCIIBot_Token}
+    restart: unless-stopped
