@@ -142,7 +142,7 @@ Invalid values include:
 - maximum decoded width or height less than 1
 - total upload byte limit less than 1
 
-The implementation may warn if `ASCIIBot_AnimationMaxOutputFrames` is greater than `ASCIIBot_AnimationMaxSourceFrames`, but it must not reject startup solely for that condition. Duplicate sampled frames are allowed, and raw source-frame count is not the primary animated acceptance model.
+The implementation may emit an informational log message if `ASCIIBot_AnimationMaxOutputFrames` is greater than `ASCIIBot_AnimationMaxSourceFrames`. This is not an error: duplicate sampled frames are allowed, and raw source-frame count is not the primary animated acceptance model. The notice exists as a configuration sanity hint for GIF/WebP inputs — when the output cap exceeds the source fuse, the source fuse will always trigger first, making the upper range of the output cap dead configuration for those formats. Startup must not be rejected solely for this condition. The warning has no meaning for MP4 input, where the source-frame fuse does not apply.
 
 ---
 
@@ -195,7 +195,7 @@ The context command resolves media from the target message in this priority orde
 2. If the message has no valid attachment, check embeds for a `gifv`-type embed with a non-null `Video.Url`. Use `embed.Video.Value.Url` as the media source.
 3. If neither source is available, reject.
 
-When the target message has both an attachment and a gifv embed, the attachment takes priority. There is no fallback from a failed or invalid attachment to the embed. If the attachment download or validation fails, the request fails or is rejected based on that failure — the bot does not silently retry against the embed.
+When the target message has both an attachment and a gifv embed, the attachment takes priority unconditionally. There is no fallback from a failed or invalid attachment to the embed. If the attachment download or validation fails, the request fails or is rejected based on that attachment failure alone — even if the message also contains a valid gifv embed. The bot does not silently retry or fall back against the embed in any failure scenario.
 
 Attachment CDN URLs carry expiry parameters and must be downloaded immediately. They must not be persisted.
 
@@ -269,7 +269,7 @@ For slash command:
 ### 5.2 Context Command Request Flow
 
 1. User invokes `ASCII this` via right-click on a message.
-2. Bot resolves the media source from the target message (attachment or gifv embed `Video.Url`).
+2. Bot resolves the media source from the target message (attachment or gifv embed `Video.Url`). If the message has an attachment, it is the exclusive media source — no fallback to the embed occurs at any point, including after a failed download or failed validation.
 3. If no supported media source is found, reject.
 4. Bot checks per-user and global concurrency limits.
 5. Bot sends a public acknowledgement by deferring the interaction and posting the acknowledgement follow-up.
@@ -1347,6 +1347,7 @@ If `ftyp` detection is not possible or the container cannot be identified as a s
 3. FFmpeg receives the local file path as its input. FFmpeg does not receive a remote URL or pipe.
 4. The temporary file must be deleted in all terminal paths: success, rejection after download, failure, cancellation, and unexpected exception.
 5. Cleanup must be guaranteed by a `finally` block or equivalent `IDisposable`/`IAsyncDisposable` pattern.
+6. Temp file cleanup is best-effort within the process lifetime. Language-level cleanup mechanisms do not execute if the process is terminated unexpectedly (crash, kill signal, container stop). Operators running long-lived containers should monitor `Path.GetTempPath()` disk usage and implement periodic external cleanup if needed.
 
 ### 19.3 Container Inspection
 
@@ -1964,6 +1965,8 @@ v4 is complete when:
 - All inherited v3 unit tests pass.
 - All new v4 unit tests pass.
 - Solution builds clean with zero warnings.
+- Docker validation confirms MP4 rejection paths (duration and dimension limits) operate correctly inside the container.
+- FFmpeg version is logged at startup.
 - Manual Discord testing confirms end-to-end operation for all supported pipelines.
 - Docker validation confirms end-to-end operation inside the container.
 
