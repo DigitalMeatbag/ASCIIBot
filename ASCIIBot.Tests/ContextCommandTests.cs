@@ -1,6 +1,5 @@
-using ASCIIBot;
+using ASCIIBot.Modules;
 using ASCIIBot.Services;
-using Microsoft.Extensions.Options;
 
 namespace ASCIIBot.Tests;
 
@@ -121,35 +120,28 @@ public sealed class ContextCommandTests
 
     // --- Hardcoded defaults ---
 
-    [Theory]
-    [InlineData("medium")]
-    public void HardcodedDefaults_Size_IsMedium(string expected)
+    [Fact]
+    public void HardcodedDefaults_Size_IsMedium()
     {
-        const string defaultSize = "medium";
-        Assert.Equal(defaultSize, expected);
+        Assert.Equal("medium", AsciiInteractionModule.ContextDefaultSize);
     }
 
-    [Theory]
-    [InlineData("on")]
-    public void HardcodedDefaults_Color_IsOn(string expected)
+    [Fact]
+    public void HardcodedDefaults_Color_IsOn()
     {
-        const string defaultColor = "on";
-        Assert.Equal(defaultColor, expected);
+        Assert.Equal("on", AsciiInteractionModule.ContextDefaultColor);
     }
 
-    [Theory]
-    [InlineData("normal")]
-    public void HardcodedDefaults_Detail_IsNormal(string expected)
+    [Fact]
+    public void HardcodedDefaults_Detail_IsNormal()
     {
-        const string defaultDetail = "normal";
-        Assert.Equal(defaultDetail, expected);
+        Assert.Equal("normal", AsciiInteractionModule.ContextDefaultDetail);
     }
 
     [Fact]
     public void HardcodedDefaults_ShowOriginal_IsTrue()
     {
-        const bool defaultShowOriginal = true;
-        Assert.True(defaultShowOriginal);
+        Assert.True(AsciiInteractionModule.ContextDefaultShowOriginal);
     }
 
     // --- Helpers ---

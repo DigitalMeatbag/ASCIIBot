@@ -142,13 +142,13 @@ docker run -e ASCIIBot_DiscordToken=your_token_here asciibot
 **Run with Docker Compose:**
 
 ```bash
-ASCIIBot_Token=your_token_here docker compose up -d
+ASCIIBot_DiscordToken=your_token_here docker compose up -d
 ```
 
 Or create a `.env` file (not committed to source control):
 
 ```
-ASCIIBot_Token=your_token_here
+ASCIIBot_DiscordToken=your_token_here
 ```
 
 Then:

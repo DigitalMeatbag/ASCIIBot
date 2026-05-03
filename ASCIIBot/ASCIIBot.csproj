@@ -16,6 +16,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
+      <_Parameter1>ASCIIBot.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Assets\CascadiaMono-Regular.ttf" />
     <Content Include="Assets\CascadiaMono-OFL.txt">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

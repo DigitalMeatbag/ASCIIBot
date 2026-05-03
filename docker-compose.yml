@@ -2,5 +2,5 @@ services:
   asciibot:
     build: .
     environment:
-      - ASCIIBot_Token=${ASCIIBot_Token}
+      - ASCIIBot_DiscordToken=${ASCIIBot_DiscordToken}
     restart: unless-stopped

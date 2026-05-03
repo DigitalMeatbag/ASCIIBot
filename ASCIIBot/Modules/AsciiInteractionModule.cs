@@ -11,6 +11,11 @@ namespace ASCIIBot.Modules;
 
 public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInteractionContext>
 {
+    internal const string ContextDefaultSize         = "medium";
+    internal const string ContextDefaultColor        = "on";
+    internal const string ContextDefaultDetail       = "normal";
+    internal const bool   ContextDefaultShowOriginal = true;
+
     private readonly ConcurrencyGate               _concurrency;
     private readonly ImageDownloadService          _downloader;
     private readonly ImageValidationService        _validator;
@@ -129,7 +134,14 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
         try
         {
             // Hardcoded defaults per spec §5.2
-            await ProcessRequestAsync(mediaUrl, reportedSize, "large", "on", "high", showOriginal: false, userId);
+            await ProcessRequestAsync(
+                mediaUrl,
+                reportedSize,
+                ContextDefaultSize,
+                ContextDefaultColor,
+                ContextDefaultDetail,
+                ContextDefaultShowOriginal,
+                userId);
         }
         finally
         {
@@ -500,6 +512,20 @@ public sealed class AsciiInteractionModule : InteractionModuleBase<SocketInterac
         {
             _logger.LogInformation("MP4 invalid dimensions for user {UserId}", userId);
             await FollowupAsync("The submitted video could not be inspected. Processing has been rejected.");
+            return;
+        }
+
+        if (inspection.VideoWidth > _options.MaxDecodedImageWidth ||
+            inspection.VideoHeight > _options.MaxDecodedImageHeight)
+        {
+            _logger.LogInformation(
+                "MP4 dimensions exceeded for user {UserId}: {Width}x{Height} limit={MaxWidth}x{MaxHeight}",
+                userId,
+                inspection.VideoWidth,
+                inspection.VideoHeight,
+                _options.MaxDecodedImageWidth,
+                _options.MaxDecodedImageHeight);
+            await FollowupAsync("The submitted video exceeds the maximum supported dimensions. Processing has been rejected.");
             return;
         }
 
